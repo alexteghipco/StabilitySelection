@@ -848,7 +848,7 @@ fscmx = squeeze(max(fsc,[],[2:length(size(fsc))]));
 if options.thresh > 1 % if threshold is not a proportion we assume you want a fixed set of selected features = threshold
     [~,fk] = maxk(fscmx,round(options.thresh));
 else
-    fk = find(fscmx > round(options.thresh));
+    fk = find(fscmx > options.thresh);
 end
 maxVars = options.maxVars;
 alpha = options.alpha;

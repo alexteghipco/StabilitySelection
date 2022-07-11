@@ -271,7 +271,6 @@ for j = 1:options.rep
             warning('Your subsamples comprise the entire dataset')
         end
     end
-
     if options.lamENInside
         if ~options.adaptive
             if options.verbose
@@ -282,7 +281,11 @@ for j = 1:options.rep
             [~,~,tmpl(:,j)] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
         else
             [Xtmp,~] = alasso(X(ctr{j},:),y(ctr{j}),[],options.stnd,options.lamAEN,options.gam);          
-            [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            if ~options.stnd
+                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            else
+                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            end
             if options.verbose
                 if j == 1
                     disp(['Computing lambda values for adaptive EN (lambda values are computed separately for each subsample after weighting dataset by an EN and we define one series of lambda values based on min/max lambda across all subsamples)'])

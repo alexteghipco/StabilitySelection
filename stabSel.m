@@ -670,7 +670,7 @@ for i = 1:options.rep
            end
            
            % now count selected feats
-           if strcmpi(options.outliers,'none') || (~strcmpi(options.outliers,'none') && strcmpi(options.outlierDir,'rows'))
+           if strcmpi(options.outlier,'none') || (~strcmpi(options.outlier,'none') && strcmpi(options.outlierDir,'rows'))
                for jj = 1:size(lsB,2)
                    if ~isempty(lsB)
                        id = find(lsB(:,jj)~=0);

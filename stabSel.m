@@ -1,321 +1,59 @@
-function [fk,fsc,fscmx,maxVars,alpha,lam, scores, oid, ctr, mdl] = stabSel(X,y,varargin)
-% Perform stability selection to identify a stable set of features with
-% which you should build your *regression* model (update for classifcation
-% in the works). Choose one of 13 feature selection algorithms, which will
-% be used in the stability selection framework. You may also integrate
-% outlier detection and removal (one of 4 methods) either prior to, or
-% during, the subsampling procedure that stability selection relies on.
-% There are many options for you to tinker with if you would like, but you
-% you can leave these out of your call and stabSel will ensure the
-% selection of reasonable options.
+function [fk,fsc,fscmx,maxVars,alpha,lam, scores, oid, ctr, mdl] = stabSel2(X,y,varargin)
+% Perform stability selection using an elastic net. 
 %
 % Call: [fk,fsc,fscmx,maxVars,alpha,lam] = stabSel(X, y);
 %
-%% What do I need to provide stabSel:  -----------------------------------
+%% What do I need to provide stabSel: 
 % X: an n x p matrix of predictors
 % y: an n x 1 vector of responses
 %
 % Optional arguments can be supplied as well, like so: 
-% stabSel(X,y,'maxVars',25,'stnd',false)
+% stabSel(X,y,'maxVars',25)
 %
-%% What does stability selection do?  ------------------------------------
-% Subsamples of your data are taken, and a feature selection algorithm is
-% run on each subsample. The features that are selected over subsamples are
-% counted up and a threshold is applied to identify a 'stable set' of
-% features. The critical parameters in stability selection are: i) the
-% number of features you force your feature selection algorithm to select
-% within each subsample, ii) the proportion of subsamples that the feature
-% must be selected within in order to enter the stable set, and iii) the
-% proportion of the data that you are subsampling. If we hold parameters
-% (ii) and (iii) fixed, we can compute the # of features our selection
-% algorithm should choose to maintain a FDR or a FWER < 0.05. This is done
-% for you by default in stabSel. Note also, however, that in cases where
-% data samples are low, you can increase your subsampling proportion. For
-% method and details, see: Meinshausen, N., & Bühlmann, P. (2010).
-% Stability selection. Journal of the Royal Statistical Society: Series B
-% (Statistical Methodology), 72(4), 417-473.
-%
-% Note that if you are using stabSel to select features for a model,
-% consider ensuring that the data used for feature selection and model
-% validation and/or tuning is independent. This will give more accurate
-% prformance estimates for the model.
-%
-%% General optional arguments ---------------------------------------------
-%
-% 'maxVars' : # of variables the selection algorithm is forced to choose on each
+%% Options ----------------------------------------------------------------
+% 'maxVars' : # of variables elastic net is forced to choose on each
 % subsample. If empty or left out, this will be calculated automatically to
-% ensure FDR or FWER correction (p < 0.05). Default: empty (i.e., []).
+% ensure FDR or FWER correction (p < 0.05).
 %
-% 'corr' : 'FDR' (default) or 'FWER' to ensure the type of correction at p
-% < 0.05. Note, stabSel will warn you if you undermine the conditions
-% required to guarantee correction. Default: 'FDR'.
+% 'alpha' : alpha values for elastic net. 0 = ridge, 1 = lasso. Thus, you
+% can do stability selection with ridge regression by setting alpha to a
+% single number close to zero (e.g., 0.0001) or stability selection with
+% lasso by setting alpha to 1.
 %
-% 'rep' : number of subsamples to draw (default: 200). Default: 200.
+% 'lam' : lambda values to include. 1000 values will be automatically
+% generated (limits based on max l that produces a solution with 1 feature;
+% limits defined across all alpha values because we take max 'stability'
+% across parameters so l should be same or comparable across alpha values).
 %
 % 'prop' : proportion of data to subsample (i.e., 0.7 means
 % 70% of the data will be used in each subsample; default: 0.5 but you may
-% increase this number if dataset is small). Default: 0.5.
+% increase this number if dataset is small)
 %
-% 'propN' : If you would like to specify the number of samples to use in
-% each subsample (rather than the proportion of the data), set 'prop' to be
-% greater than or equal to 1 and propN to true. Default: false.
+% 'rep' : number of subsamples (default: 200)
 %
-% 'adjProp' : if you are doing outlier detection, by default, the
-% proportion of data used in each subsample is cacluated *after* outlier
-% removal. But, you can set adjProp to true in order to calculate the
-% proportion before outlier removal and ensure that this number of samples
-% is taken *after* outlier removal. Default: false.
+% 'stnd' : standardize (default: true). If true, will still be turned off
+% after computing weights IF you are using adaptive EN/lasso/ridge.
 %
-% 'thresh' : threshold for proportion of subsamples a feature must appear
-% in to enter the stable set. The default is 0.9 which is used for the
-% FDR/FWER computation so if you change this, it may break FDR/FWER AND
-% maxVars calculation. However, there are cases where this is reasonable.
-% See Meinshausen & Bulhmann (2010). Default: 0.9.
+% 'corr' : 'FDR' (default) or 'FWER'
 %
-% 'selAlgo' : sets the algorithm for selecting features. This may be 'EN'
-% for an elastic net, 'lasso' for lasso regression, 'ridge for ridge
-% regression, 'LR' for correlation, 'robustLR' for robust linear regression
-% (not as sensitive to outliers but takes MUCH longer to run), 'NCA' for
-% neighborhood components analysis, 'ftest' for an ftest, 'releiff' for the
-% relief algorithm that relies on nearest neighbor search, 'GPR' for a
-% gaussian process model, and 'RF' for a random forest. Note, that an
-% additional argument can be used to adjust 'EN' or 'lasso' to be adaptive
-% (in both cases, coefficients from ridge regression are used to weight
-% your data before applying lasso or an elastic net. For more information,
-% see: Zou, H., & Zhang, H. H. (2009). On the adaptive elastic-net with a
-% diverging number of parameters. Annals of statistics, 37(4), 1733.).
-% Note, some of these options require more recent versions of matlab, but
-% stabSel will check this for you. Default: 'EN'.
+% 'thresh' : threshold for retaining feature in stable set (i.e.,
+% proportion of subsamples in which feature has to be selected). The
+% default is 0.9 which is used for the FDR/FWER computation so if you
+% change this, it breaks FDR/FWER AND maxVars. 
 %
-% 'stnd' : standardize data. This only applies when selAlgo is 'EN',
-% 'lasso', 'ridge', or 'GPR'. It also determines if standardization will be used
-% with some outlier detection methods (i.e., robustcov and ocsvm).
+% 'parallel' : set to false (default) to avoid parallel computing 
 %
-% 'parallel' : set to true to attempt parallel computing where possible.
-% Default: false.
-%
-% 'verbose' : set to true to get feedback in the command window about what
-% stabSel is doing. Default: false.
-%
-% ------------ Optional arguments for > 1 selection algorithm -------------
-% -------------------- (elastic net, lasso, ridge, nca, gpr) -------------------
-%
-% 'lmn' : set the min. lambda value for elastic net, lasso, ridge, and
-% neighborhood components analysis. Leave blank to automatically compute
-% lambda values for elastic net, lasso and ridge using the max l trick (see
-% below). If automatically computed, 'lamRatio' will be used to determine
-% the lmn (see below). For NCA, default lmn will be 0.0001 but this value
-% will be adjusted based on the standard deviation of your predictors.
-% Default: [].
-%
-% 'lmx' : max lambda value to use in sequence. This will override the max l
-% trick for elastic net, lasso and ridge (see lamENInside section below for
-% more detail). Default: [].
-%
-% 'ln' : number of lambda values in sequence (i.e., between user-supplied
-% lmx and lmn OR automatically determined lmn and lmx). This applies to
-% elastic net, lasso, ridge, NCA, and GPR.
-%
-% 'lst' : determines how values will be spaced between lmn and lmx to
-% produce lambda sequence. Set to 'linear' or 'log'. Default: 'linear'.
-% Consider using log for en, lasso, ridge (argument also applies to GPR and
-% NCA).
-%
-% ------------ Optional arguments for elastic net, lasso, ridge -----------
-%
-% 'adaptive' : sets EN or lasso to be adaptive. Lasso lacks oracle
-% properties, may have 'inaccurate' weights, or inconsisttently select
-% variables (e.g., noise variables which is especially true when n >> p;
-% see Zou & Zhang, 2009). Adaptive lasso has oracle properties but lacks
-% the ability to select *all* of the correlated variables that are
-% predictive. The L2 regualrization in EN fixes this, but EN lacks oracle
-% properties as well so ideally we would use adaptive EN. In practice,
-% adaptive EN does not always work flawlessly. This is in part because
-% adaptive EN introduces a new parameter to tune: gamma. It is unclear how
-% to best tune this parameter within stabSel so this is currently being
-% worked out. However, some a prior set gamma value may work quite well for
-% your data. Default: false.
-%
-% 'adaptOutside' : determines if you are weighting data (as in adaptive EN,
-% lasso, ridge) BEFORE (set to false) or DURING (set to true) subsampling.
-% Default: false.
-%
-% 'gam' : gamma value for adapting EN or lasso. This effectively controls
-% the degree to which your data is weighted by a first-run of ridge
-% regression. Default: 1.
-%
-% 'alpha' : alpha values for determining weight of L1 vs L2 optimization in
-% elastic net. This can be an n x 1 vector. Default: [0.1:0.1:1].
-%
-% 'lamEN' : lambda values to be used for elastic net, lasso, or ridge
-% regression. By default, lambdas are computed automatically using the 'max
-% lambda' trick. We can perform simple matrix multiplication using your
-% input data to detrmine the max lambda that will produce exactly 1
-% non-zero coefficient. Note, this typically works better when your data is
-% standardized. Lambda values will be automatically generated this way for
-% all alpha values, then the min and max lambda computed over this set of
-% sequences is used to generate a single lambda sequence that is applied.
-% Default: [].
-%
-% 'lamENInside' : determines if automatically defined lambda values will be
-% computed BEFORE subsampling or DURING subsampling. Set to true to compute
-% them DURING subsampling. That means each subsample will have a different
-% set of lambdas. There are cases where this may make sense to do (i.e., if
-% one sequence of lambdas does not fit your data well; stabSel will warn
-% you when the lambdas are a VERY poor fit but not otherwise so inspect the
-% results of stabSel yourself to determine this). Default: false.
-%
-% 'lamAEN' : if you pass in lambdas through lamEN, these will apply to the
-% first-run of ridge regression that is used to weight your data. But if
-% you are doing adaptive EN or lasso, you need lambda values for *AFTER*
-% this weighting. You can supply them here or leave blank to compute them
-% using the max l trick. Default: [].
-%
-% 'lamRatio' : to get a sequence of lambda values, we use the max l trick
-% to get the max lambda, then use this ratio to get the smallest lambda.
-% Default: 1e-4. Default: [].
-%
-% --------------------- Optional arguments for nca ------------------------
-%
-% 'lamNCA', : lambda values to use for NCA. Default values will be set
-% between 0.0001 to 100 before weighting by standard deviation of response
-% variable. Default: [].
-%
-% ------------ Optional arguments for linear regression -------------------
-%
-% 'LRtype', : Determines how linear regression and/or correlation is used
-% to select features. We can either use the pvalue if set to 'pval' or the
-% top maxVars features if set to 'filter'. Default: 'pval'.
-%
-% 'lrp', : p-value to use for selecting features (only applies if LRType is
-% pval. Default: 0.05.
-%
-% ------------ Optional arguments for relieff -----------------------------
-%
-% 'rK' : determines k in knn (# of neighbors). Default: [1:14
-% 15:10:size(X,2)/2].
-%
-% 'rE' : sigma, or distance scaling factor. Consider changing this to just
-% 50 if stabSel is taking too long on your data. Default: [10:15:200].
-%
-% ------------ Optional arguments for GPR ---------------------------------
-%
-% 'lamGPR' : determines regularization standard deviation. Default:
-% 1e-2*std(y). Note, GPR will use: ardsquaredexponential kernel function,
-% lbfgs optimizer, fully independent conditional approximation for
-% prediction, and subset of regressors approximation as the fit method.
-% Note, you currently cannot set lmn and lmx for lamGPR.
-%
-% ------------------- Optional arguments for RF ---------------------------
-%
-% 'lamRF' : this determines the number of learning cycles to use for the
-% random forest. Can be an n x 1 sequence. More options for RF are
-% available but not currently implemented due to computational costs
-% required to execute. To make them available, uncomment line 481 and
-% comment out line 480. You can then pass in a learning rate using optional
-% argument 'lr'. Max. # splits using optional argument 'mns' and min leaf
-% size using optional argument 'mls'. In these 3 cases, you should pass in
-% a sequence of values that is n x 1 in size. Default values for lamRF are
-% 10 linearly spaced values between 10 and 500. Default values for min leaf
-% size are round(linspace(1,max(2,floor(size(X,2)/2)),15)). Default values
-% for max # splits are round(linspace(1,size(X,2)-1,15)). Default values
-% for learning rate are linspace(1e-3,1,10). Default: [].
-%
-% ---------- Optional arguments for outlier detection/removal -------------
-%
-% 'outlier' : determines where outlier detection removal will be performed
-% on matrix X. Set to 'outside' to perform outlier detection before
-% subsampling and 'inside' to perform outlier detection inside the
-% subsampling loop. Set to 'none to avoid detection/removing outliers.
-% Default: 'none'.
-%
-% 'outlierPrepro' : currently can only be set to 'none' or 'pca'. In the
-% latter case, PCA is performed first, before outlier detection. This is
-% useful because some methods of outlier detection do not work with lots of
-% features. Default: none.
-%
-% 'outlierPreproP' : if doing PCA, a permutation analysis will be performed
-% to determine the number of components to keep. This sets the p-value for
-% the components that will be retained. Default: 0.05.
-%
-% 'outlierPreproN' : # of permutations over which a p-value will be
-% computed if doing PCA. Default: 5000.
-%
-% 'outlierPreproNonconsec' : if doing PCA, in some cases, significant
-% components may not be consectuive (i.e., a component that explains very
-% little variance may be significant). To keep only the first consecutive
-% set of components that explain significant variance (organized by
-% descending % of variance explained) set this to true. Default: true.
-%
-% 'outlierDir' : specify whether you want to find outliers in the rows or
-% columns using 'rows' or 'columns'. If you set this to columns we assume
-% you want to find outlier features.  Default: 'rows'.
-%
-% 'outlierMethod' : specify method for outlier detection. Set to 'median',
-% 'mean', 'quartiles', 'grubbs', 'gesd' to use isoutlier.m, which will
-% perofrm outlier detection using some scaled MAD from the median, some
-% std devs from the mean, some IQ ranges above/below upper lower quartiles,
-% using the grubb's test, or using a generalized extreme studentized
-% deviate test for outliers. Set this to 'fmcd, 'ogk', or 'olivehawkins' to
-% use different methods for estimating robust covariance to detect outliers
-% (robustcov.m). Use 'iforest' to generate an isolation forest to identify
-% outliers. Use 'ocsvm' to use one class svm to identify outliers. Default:
-% median.
-% 
-% 'outlierReps' : some outlier detection methods are stochastic and
-% repeating them can be helpful. This determines the number of times that
-% they will be repeated. Default: 1 (i.e., no repeats).
-%
-% 'repThresh' : a threshold that determines how often outliers need to be
-% identified across repeats to be kept as outliers. Default: 0.8 (i.e., 80%
-% of the time).
-%
-% 'propOutliers' : some outlier detection methods force you to select a
-% proportion of the data you expect to be an outlier. This is the case for
-% iforest, ocsvm, fmcd, and olivehawkins. Default: 0.1.
-%
-% 'outlierThresh' : some outlier detection methods require a threshold
-% factor that varies in meaning depending on the method used but determines
-% the # of outliers identified. For 'median' it refers to the number of
-% scaled MAD. For 'mean' it refers to the number of std devs from the mean.
-% For 'grubbs' and 'gesd' it ranges from 0 - 1 and determines the detection
-% threshold. For 'quartiles' it refers to the number of interquartile
-% ranges. Default: 3 (i.e., good for 'median', the default for
-% outlierMethod).
+% 'adaptive' : set to true to perform adaptive EN/lasso/ridge (which of 3
+% determined by your als values). This simply initializes your preferred
+% algorithm with weights from ridge regression.
 %
 %% Outputs ----------------------------------------------------------------
-% fk : stable set of features (i.e., features kept) fsc : empirical
-% probabilities across regularization parameters that were used.
-%
-% fsmx : max empirical probability across regularization parameters.  Note, in
-% stability selection we take the max proportion of times that a feature
-% was selected ACROSS all regularization parameters.
-%
-% maxVars : # of variables/features selected in each subsample.
-%
-% alpha : alpha values used. Only applies to elastic net, lasso, ridge.
-%
-% lam : lambda values used. Only applies to elastic net, lasso, ridge, nca,
-% GPR, RF.
-%
-% 'scores' : returns weighting of features for linear
-% regression/correlation, relieff, mrmr, nca. 
-%
-% 'oid' : rows of X that are determined to be outliers.
-%
-% 'ctr' : indices of samples that were used on each subsample. 
-%
-% 'mdl' : this is a model that was trained to identify outliers. If
-% outliers were detected inside the subsampling scheme, there is a model
-% for each subsample. You can get a consensus of the predictions of these
-% models on new data.
-%
-%% Internal notes----------------------------------------------------------
-% This was originally designed around using the elastic net. Need to
-% streamline arguments and outputs (e.g., scores can be returned as weights
-% from other models, options should be renamed, need to select better
-% defaults to test for RF, etc). 
-% Alex Teghipco // alex.teghipco@sc.edu // 
+% fk : features kept (i.e., stable set of features)
+% fsc : empirical probabilities for pairs of regularization parameters
+% fsmx : max empirical probability across regularization parameters
+% maxVars : # of variables/features selected in each subsample
+% alpha : alpha values used 
+% lam : lambda values used
 
 % load in defaults
 options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],...
@@ -361,23 +99,6 @@ if str2double(v(1:end-1)) < 2011 && strcmpi(options.selAlgo,'relieff')
 end
 if str2double(v(1:end-1)) < 2012 && strcmpi(options.selAlgo,'en')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2012...please install a more recent version of matlab (2012+) to use elastic net, lasso, or ridge for feature selection'])
-end
-
-% fix lasso or ridge as inputs
-if strcmpi(options.selAlgo,'lasso')
-    options.alpha = 1;
-    options.selAlgo = 'en';
-end
-if strcmpi(options.selAlgo,'ridge')
-    options.alpha = 0.00001;
-    options.selAlgo = 'en';
-end
-
-if options.adaptive
-    if ~strcmpi(options.selAlgo,'lasso') && ~strcmpi(options.selAlgo,'en')
-        options.adaptive = false;
-        warning('You can only set adaptive to true if selAlgo is lasso or en')
-    end
 end
 
 % proportion may reflect N of subsample instead of an N to compute
@@ -571,7 +292,7 @@ for j = 1:options.rep
     end
 end
 if options.lamENInside
-    [~,~,options.lamEN] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha,options.stnd,max(tmpl(:)),min(tmpl(:)),options.lamRatio,options.lst,options.ln);
+    [~,~,options.lamEN] = defLam([],[],options.alpha,options.stnd,max(tmpl(:)),min(tmpl(:)),options.lamRatio,options.lst,options.ln);
 end
 
 % now we initialize a matrix for counting selected features across
@@ -613,35 +334,9 @@ for i = 1:options.rep
     Xtmp = X(ctr{i},:);
     Ytmp = y(ctr{i});
     
-    % remove outliers defined as either rows (samples) or cols (features)
-    if strcmpi(options.outlier,'inside')
-        [X,oid,mdl,~] = rmOutliers(Xtmp,'prepro',options.outlierPrepro,'nonconsec',options.outlierPreproNonconsec,'outlierMethod',options.outlierMethod,'outlierDir',options.outlierDir,'outlierThresh',options.outlierThresh,'pcaP',options.outlierPreproP,'pcaPermN',options.outlierPreproN,'propOutliers',options.propOutliers,'rep',options.outlierReps,'repThresh',options.outlierRepThresh);
-        % check if you want to adjust subsampling prop. to account for #
-        % outliers removed...prop will be adjusted to keep training set same
-        % size as if the prop selected was applied to all data...
-        if options.verbose
-            if strcmpi(options.outlierDir,'rows')
-                disp(['Removed ' num2str(length(oid)) ' row (samples) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) during subsampling'])
-            elseif strcmpi(options.outlierDir,'collumns')
-                disp(['Removed ' num2str(length(oid)) ' col (features) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) during subsampling'])
-            end
-        end
-        if options.adjProp
-            if strcmpi(options.outlierDir,'rows') % no adjustment if outliers are features
-                in = fix((size(Xtmp,1) + length(oid))*options.prop);
-                options.prop = in/size(Xtmp,1);
-                if options.verbose
-                    disp(['Adjusting subsampling proportion to ' num2str(options.prop) ' in order to retain ' num2str(in) ' samples in each subsample'])
-                end
-                if options.prop > 1
-                    options.prop = 1;
-                    if options.verbose
-                        warning('Adjusting subsampling proportion after outlier removal results in subsampling sets that comprise the entire dataset')
-                    end
-                end
-            end
-        end
-    end
+    % remove outliers defined as either rows (samples) or cols
+    % (features)
+    %oid = 1:size(Xtmp,2);
 
     % start EN...
     if strcmpi(options.selAlgo,'EN')
@@ -799,9 +494,9 @@ for i = 1:options.rep
     if strcmpi(options.selAlgo,'gpr')
         lam = options.lamGPR;
         for jj = 1:length(lam)
-            mdl2 = fitrgp(Xtmp,Ytmp,'KernelFunction','ardsquaredexponential', ...
+            mdl = fitrgp(Xtmp,Ytmp,'KernelFunction','ardsquaredexponential', ...
                 'Optimizer','lbfgs','FitMethod','sr','PredictMethod','fic','Standardize',stnd,'Regularization',lam(jj));
-            sl = mdl2.KernelInformation.KernelParameters(1:end-1);
+            sl = mdl.KernelInformation.KernelParameters(1:end-1);
             weights = exp(-sl); % Predictor weights
             scores{jj} = weights/sum(weights); % Normalized predictor weights
             [~,id{jj}] = sort(scores{jj},'descend');
@@ -827,8 +522,8 @@ for i = 1:options.rep
 %             end
                     t = templateTree('NumVariablesToSample','all',...
                         'PredictorSelection','interaction-curvature','Surrogate','on','MaxNumSplits',3,'MinLeafSize',6);
-                    mdl2 = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-                    scores{jj} = oobPermutedPredictorImportance(mdl2);
+                    mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
+                    scores{jj} = oobPermutedPredictorImportance(mdl);
                     [~,id{jj}] = sort(scores{jj},'descend');
                     fsc(id{jj}(1:options.maxVars),jj) = fsc(id{jj}(1:options.maxVars),jj)+1;
         end

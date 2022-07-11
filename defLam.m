@@ -12,18 +12,24 @@ if isempty(ln)
     ln = 100;
 end
 
-for i = 1:length(alpha)
-    if isempty(lmx) % compute max lambda if not specified by user...
-        [lmxo(i,1),nullMSE,~,~,~,~,~] = computeLambdaMax(X,y,[],alpha(i),true,stnd);
-    else
-        lmxo(i,1) = lmx;
+if ~isempty(X) && ~isempty(y) % if X and y are not empty we assume the passed in lmn and lmx are just going to be used to create a lambda series...
+    for i = 1:length(alpha)
+        if isempty(lmx) % compute max lambda if not specified by user...
+            [lmxo(i,1),nullMSE,~,~,~,~,~] = computeLambdaMax(X,y,[],alpha(i),true,stnd);
+        else
+            lmxo(i,1) = lmx;
+        end
+        if isempty(lmn) % compute min lambda if not specified by user...
+            lmno(i,1) = lmxo(i,1) * lamRatio;
+        else
+            lmno(i,1) = lmn;
+        end
     end
-    if isempty(lmn) % compute min lambda if not specified by user...
-        lmno(i,1) = lmxo(i,1) * lamRatio;
-    else
-        lmno(i,1) = lmn;
-    end
+else
+    lmno = lmn;
+    lmxo= lmx;
 end
+
 lms = [];
 if strcmpi(lst,'linear')
     lms = linspace(min(lmno),max(lmxo),ln);

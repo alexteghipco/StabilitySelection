@@ -87,9 +87,12 @@ function [fk,fsc,fscmx,maxVars,alpha,lam, scores, oid, ctr, mdl] = stabSel(X,y,v
 % Note, some of these options require more recent versions of matlab, but
 % stabSel will check this for you. Default: 'EN'.
 %
-% 'stnd' : standardize data. This only applies when selAlgo is 'EN',
-% 'lasso', 'ridge', or 'GPR'. It also determines if standardization will be used
-% with some outlier detection methods (i.e., robustcov and ocsvm).
+% 'stnd' : standardize data. If true, this is passed into the selection
+% algorithm if selAlgo is 'EN', 'lasso', 'ridge', or 'GPR'. It also
+% determines if standardization will be used with some outlier detection
+% methods (i.e., robustcov and ocsvm). If a different selection algorithm
+% is used, standardization will occur inside the subsampling scheme (after
+% outlier detection).
 %
 % 'parallel' : set to true to attempt parallel computing where possible.
 % Default: false.
@@ -373,13 +376,6 @@ if strcmpi(options.selAlgo,'ridge')
     options.selAlgo = 'en';
 end
 
-if options.adaptive
-    if ~strcmpi(options.selAlgo,'lasso') && ~strcmpi(options.selAlgo,'en')
-        options.adaptive = false;
-        warning('You can only set adaptive to true if selAlgo is lasso or en')
-    end
-end
-
 % proportion may reflect N of subsample instead of an N to compute
 if options.propN && options.prop >= 1
     tmpl = options.prop;
@@ -429,6 +425,7 @@ if strcmpi(options.outlier,'outside')
     % check if you want to adjust subsampling prop. to account for #
     % outliers removed...prop will be adjusted to keep training set same
     % size as if the prop selected was applied to all data...
+    y(oid) = [];
     if options.verbose
         if strcmpi(options.outlierDir,'rows')
             disp(['Removed ' num2str(length(oid)) ' row (samples) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) before subsampling'])
@@ -550,7 +547,6 @@ for j = 1:options.rep
             warning('Your subsamples comprise the entire dataset')
         end
     end
-
     if options.lamENInside
         if ~options.adaptive
             if options.verbose
@@ -561,7 +557,11 @@ for j = 1:options.rep
             [~,~,tmpl(:,j)] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
         else
             [Xtmp,~] = alasso(X(ctr{j},:),y(ctr{j}),[],options.stnd,options.lamAEN,options.gam);          
-            [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            if ~options.stnd
+                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            else
+                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
+            end
             if options.verbose
                 if j == 1
                     disp(['Computing lambda values for adaptive EN (lambda values are computed separately for each subsample after weighting dataset by an EN and we define one series of lambda values based on min/max lambda across all subsamples)'])
@@ -571,7 +571,7 @@ for j = 1:options.rep
     end
 end
 if options.lamENInside
-    [~,~,options.lamEN] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha,options.stnd,max(tmpl(:)),min(tmpl(:)),options.lamRatio,options.lst,options.ln);
+    [~,~,options.lamEN] = defLam([],[],options.alpha,options.stnd,max(tmpl(:)),min(tmpl(:)),options.lamRatio,options.lst,options.ln);
 end
 
 % now we initialize a matrix for counting selected features across
@@ -613,36 +613,33 @@ for i = 1:options.rep
     Xtmp = X(ctr{i},:);
     Ytmp = y(ctr{i});
     
-    % remove outliers defined as either rows (samples) or cols (features)
+    % remove outliers defined as either rows (samples) or cols
+    % (features)
+    %oid = 1:size(Xtmp,2);
+    % remove outliers defined as either rows (samples) or cols
+    % (features)
     if strcmpi(options.outlier,'inside')
-        [X,oid,mdl,~] = rmOutliers(Xtmp,'prepro',options.outlierPrepro,'nonconsec',options.outlierPreproNonconsec,'outlierMethod',options.outlierMethod,'outlierDir',options.outlierDir,'outlierThresh',options.outlierThresh,'pcaP',options.outlierPreproP,'pcaPermN',options.outlierPreproN,'propOutliers',options.propOutliers,'rep',options.outlierReps,'repThresh',options.outlierRepThresh);
+        [Xtmp,oid{i},mdl{i},~] = rmOutliers(Xtmp,'prepro',options.outlierPrepro,'nonconsec',options.outlierPreproNonconsec,'outlierMethod',options.outlierMethod,'outlierDir',options.outlierDir,'outlierThresh',options.outlierThresh,'pcaP',options.outlierPreproP,'pcaPermN',options.outlierPreproN,'propOutliers',options.propOutliers,'rep',options.outlierReps,'repThresh',options.outlierRepThresh);
+        if strcmpi(options.outlierDir,'rows')
+            Ytmp(oid{i}) = [];
+        end
         % check if you want to adjust subsampling prop. to account for #
         % outliers removed...prop will be adjusted to keep training set same
         % size as if the prop selected was applied to all data...
         if options.verbose
             if strcmpi(options.outlierDir,'rows')
-                disp(['Removed ' num2str(length(oid)) ' row (samples) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) during subsampling'])
+                disp(['Removed ' num2str(length(oid{i})) ' row (samples) outliers from data (' num2str((length(oid{i})/size(Xtmp,2))*100) '%) before subsampling'])
             elseif strcmpi(options.outlierDir,'collumns')
-                disp(['Removed ' num2str(length(oid)) ' col (features) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) during subsampling'])
-            end
-        end
-        if options.adjProp
-            if strcmpi(options.outlierDir,'rows') % no adjustment if outliers are features
-                in = fix((size(Xtmp,1) + length(oid))*options.prop);
-                options.prop = in/size(Xtmp,1);
-                if options.verbose
-                    disp(['Adjusting subsampling proportion to ' num2str(options.prop) ' in order to retain ' num2str(in) ' samples in each subsample'])
-                end
-                if options.prop > 1
-                    options.prop = 1;
-                    if options.verbose
-                        warning('Adjusting subsampling proportion after outlier removal results in subsampling sets that comprise the entire dataset')
-                    end
-                end
+                disp(['Removed ' num2str(length(oid{i})) ' col (features) outliers from data (' num2str((length(oid{i})/size(Xtmp,2))*100) '%) before subsampling'])
             end
         end
     end
-
+    
+    % do standardization if necessary
+    if options.stnd && (~strcmpi(options.selAlgo,'en') || ~strcmpi(options.selAlgo,'lasso') || ~strcmpi(options.selAlgo,'ridge') || ~strcmpi(options.selAlgo,'rf') || ~strcmpi(options.selAlgo,'gpr'))
+        Xtmp = bsxfun(@rdivide,bsxfun(@minus,Xtmp,mean(Xtmp,2)),std(Xtmp,0,2));
+    end
+    
     % start EN...
     if strcmpi(options.selAlgo,'EN')
        % copy in lambda values precalculated...
@@ -799,9 +796,9 @@ for i = 1:options.rep
     if strcmpi(options.selAlgo,'gpr')
         lam = options.lamGPR;
         for jj = 1:length(lam)
-            mdl2 = fitrgp(Xtmp,Ytmp,'KernelFunction','ardsquaredexponential', ...
+            mdl = fitrgp(Xtmp,Ytmp,'KernelFunction','ardsquaredexponential', ...
                 'Optimizer','lbfgs','FitMethod','sr','PredictMethod','fic','Standardize',stnd,'Regularization',lam(jj));
-            sl = mdl2.KernelInformation.KernelParameters(1:end-1);
+            sl = mdl.KernelInformation.KernelParameters(1:end-1);
             weights = exp(-sl); % Predictor weights
             scores{jj} = weights/sum(weights); % Normalized predictor weights
             [~,id{jj}] = sort(scores{jj},'descend');
@@ -827,8 +824,8 @@ for i = 1:options.rep
 %             end
                     t = templateTree('NumVariablesToSample','all',...
                         'PredictorSelection','interaction-curvature','Surrogate','on','MaxNumSplits',3,'MinLeafSize',6);
-                    mdl2 = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-                    scores{jj} = oobPermutedPredictorImportance(mdl2);
+                    mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
+                    scores{jj} = oobPermutedPredictorImportance(mdl);
                     [~,id{jj}] = sort(scores{jj},'descend');
                     fsc(id{jj}(1:options.maxVars),jj) = fsc(id{jj}(1:options.maxVars),jj)+1;
         end

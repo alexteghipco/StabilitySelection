@@ -70,32 +70,31 @@ function [fk,fsc,fscmx,maxVars,alpha,lam, scores, oid, ctr, mdl] = stabSel(X,y,v
 % in to enter the stable set. The default is 0.9 which is used for the
 % FDR/FWER computation so if you change this, it may break FDR/FWER AND
 % maxVars calculation. However, there are cases where this is reasonable.
-% See Meinshausen & Bulhmann (2010). Default: 0.9.
+% See Meinshausen & Bulhmann (2010). If threshold is > 1 we assume you are
+% telling stabSel how many features to select. Default: 0.9.
 %
 % 'selAlgo' : sets the algorithm for selecting features. This may be 'EN'
 % for an elastic net, 'lasso' for lasso regression, 'ridge for ridge
 % regression, 'LR' for correlation, 'robustLR' for robust linear regression
 % (not as sensitive to outliers but takes MUCH longer to run), 'NCA' for
-% neighborhood components analysis, 'ftest' for an ftest, 'releiff' for the
-% relief algorithm that relies on nearest neighbor search, 'GPR' for a
-% gaussian process model, and 'RF' for a random forest. Note, that an
-% additional argument can be used to adjust 'EN' or 'lasso' to be adaptive
-% (in both cases, coefficients from ridge regression are used to weight
-% your data before applying lasso or an elastic net. For more information,
-% see: Zou, H., & Zhang, H. H. (2009). On the adaptive elastic-net with a
-% diverging number of parameters. Annals of statistics, 37(4), 1733.).
-% Note, some of these options require more recent versions of matlab, but
-% stabSel will check this for you. Default: 'EN'.
+% neighborhood components analysis, 'mrmr' for minimum redundance maximum
+% relevance algorithm which relies on mutual information, 'ftest' for an
+% ftest, 'releiff' for the relief algorithm that relies on nearest neighbor
+% search, 'GPR' for a gaussian process model, and 'RF' for a random forest.
+% Note, that an additional argument can be used to adjust 'EN' or 'lasso'
+% to be adaptive (in both cases, coefficients from ridge regression are
+% used to weight your data before applying lasso or an elastic net. For
+% more information, see: Zou, H., & Zhang, H. H. (2009). On the adaptive
+% elastic-net with a diverging number of parameters. Annals of statistics,
+% 37(4), 1733.). Note, some of these options require more recent versions
+% of matlab, but stabSel will check this for you. Default: 'EN'.
 %
-% 'stnd' : standardize data. If true, this is passed into the selection
-% algorithm if selAlgo is 'EN', 'lasso', 'ridge', or 'GPR'. It also
-% determines if standardization will be used with some outlier detection
-% methods (i.e., robustcov and ocsvm). If a different selection algorithm
-% is used, standardization will occur inside the subsampling scheme (after
-% outlier detection).
+% 'stnd' : standardize data. This only applies when selAlgo is 'EN',
+% 'lasso', 'ridge', or 'GPR'. It also determines if standardization will be used
+% with some outlier detection methods (i.e., robustcov and ocsvm).
 %
 % 'parallel' : set to true to attempt parallel computing where possible.
-% Default: false.
+% Applies to scripts stabSel draws on as well. Default: false.
 %
 % 'verbose' : set to true to get feedback in the command window about what
 % stabSel is doing. Default: false.
@@ -252,7 +251,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam, scores, oid, ctr, mdl] = stabSel(X,y,v
 %
 % 'outlierDir' : specify whether you want to find outliers in the rows or
 % columns using 'rows' or 'columns'. If you set this to columns we assume
-% you want to find outlier features.  Default: 'rows'.
+% you want to find outlier features. Default: 'rows'.
 %
 % 'outlierMethod' : specify method for outlier detection. Set to 'median',
 % 'mean', 'quartiles', 'grubbs', 'gesd' to use isoutlier.m, which will
@@ -353,14 +352,14 @@ end
 
 % check compatibility
 v = version('-release');
-if str2double(v(1:end-1)) < 2022 && strcmpi(options.selAlgo,'fsrmrmr')
-    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2022...please install a more recent version of matlab (2022+) to use fsrmrmr for feature selection'])
+if str2double(v(1:end-1)) < 2022 && strcmpi(options.selAlgo,'mrmr')
+    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2022...please install a more recent version of matlab (2022+) to use mrmr for feature selection'])
 end
 if str2double(v(1:end-1)) < 2017 && strcmpi(options.selAlgo,'nca')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2017...please install a more recent version of matlab (2017+) to use NCA for feature selection'])
 end
 if str2double(v(1:end-1)) < 2011 && strcmpi(options.selAlgo,'relieff')
-    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2011...please install a more recent version of matlab (2011+) to use fsrmrmr for feature selection'])
+    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2011...please install a more recent version of matlab (2011+) to use relieff for feature selection'])
 end
 if str2double(v(1:end-1)) < 2012 && strcmpi(options.selAlgo,'en')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2012...please install a more recent version of matlab (2012+) to use elastic net, lasso, or ridge for feature selection'])
@@ -410,11 +409,16 @@ if isempty(options.maxVars)
     end
 end
 
-% check for warning...
+% check for redundant lambda args...
 if ~isempty(options.lamEN) && options.lamENInside
     if options.verbose
         warning('You cannot pass in lambda values AND try to define lambda values inside the subsamples. Assuming turning on lamENInside was a mistake...setting this option to false.')
     end
+end
+
+% warn about features as outliers
+if ~strcmpi(options.outlier,'none') && strcmpi(options.outlierDir,'columns')
+    warning('Treating features as outliers has not been thoroughly debugged...proceed with caution')
 end
 
 % check to see if you want to do outlier removal now...
@@ -511,9 +515,8 @@ end
 % CURRENTLY EXPERIMENTAL
 if strcmpi(options.selAlgo,'RF')
     warning('RF parameters are currently hard coded...its difficult to find reasonable set of parameters that are quick to evaluate (currently only evaluate learning cycles between 10 and 500 based on passed ln argument)')
-
     if isempty(options.lamRF)
-        options.lamRF = linspace(10,500,10);
+        options.lamRF = linspace(10,500,options.ln);
     end
     if isempty(options.lr)
         options.lr = linspace(1e-3,1,10);
@@ -557,11 +560,7 @@ for j = 1:options.rep
             [~,~,tmpl(:,j)] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
         else
             [Xtmp,~] = alasso(X(ctr{j},:),y(ctr{j}),[],options.stnd,options.lamAEN,options.gam);          
-            if ~options.stnd
-                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
-            else
-                [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
-            end
+            [~,~,tmpl(:,j)] = defLam(Xtmp,y(ctr{j}),options.alpha,false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln);
             if options.verbose
                 if j == 1
                     disp(['Computing lambda values for adaptive EN (lambda values are computed separately for each subsample after weighting dataset by an EN and we define one series of lambda values based on min/max lambda across all subsamples)'])
@@ -636,7 +635,7 @@ for i = 1:options.rep
     end
     
     % do standardization if necessary
-    if options.stnd && (~strcmpi(options.selAlgo,'en') || ~strcmpi(options.selAlgo,'lasso') || ~strcmpi(options.selAlgo,'ridge') || ~strcmpi(options.selAlgo,'rf') || ~strcmpi(options.selAlgo,'gpr'))
+    if options.stnd && (~strcmpi(options.selAlgo,'en') && ~strcmpi(options.selAlgo,'lasso') && ~strcmpi(options.selAlgo,'ridge') && ~strcmpi(options.selAlgo,'rf') && ~strcmpi(options.selAlgo,'gpr'))
         Xtmp = bsxfun(@rdivide,bsxfun(@minus,Xtmp,mean(Xtmp,2)),std(Xtmp,0,2));
     end
     
@@ -671,10 +670,21 @@ for i = 1:options.rep
            end
            
            % now count selected feats
-           for jj = 1:size(lsB,2)
-               if ~isempty(lsB)
-                   id = find(lsB(:,jj)~=0);
-                   fsc(id,jj+adj,kk) = fsc(id,jj+adj,kk)+1;
+           if strcmpi(options.outliers,'none') || (~strcmpi(options.outliers,'none') && strcmpi(options.outlierDir,'rows'))
+               for jj = 1:size(lsB,2)
+                   if ~isempty(lsB)
+                       id = find(lsB(:,jj)~=0);
+                       fsc(id,jj+adj,kk) = fsc(id,jj+adj,kk)+1;
+                   end
+               end
+           else
+               s = 1:size(X,2);
+               s(oid{i}) = [];
+               for jj = 1:size(lsB,2)
+                   if ~isempty(lsB)
+                       id = find(lsB(:,jj)~=0);
+                       fsc(s(id),jj+adj,kk) = fsc(s(id),jj+adj,kk)+1;
+                   end
                end
            end
        end
@@ -836,9 +846,9 @@ end
 fsc = fsc./options.rep;
 fscmx = squeeze(max(fsc,[],[2:length(size(fsc))]));
 if options.thresh > 1 % if threshold is not a proportion we assume you want a fixed set of selected features = threshold
-    [~,fk] = maxk(fscmx,options.thresh);
+    [~,fk] = maxk(fscmx,round(options.thresh));
 else
-    fk = find(fscmx > options.thresh);
+    fk = find(fscmx > round(options.thresh));
 end
 maxVars = options.maxVars;
 alpha = options.alpha;

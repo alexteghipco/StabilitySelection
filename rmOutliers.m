@@ -26,7 +26,7 @@ if str2double(v(1:end-1)) < 2017 && (strcmpi(options.outlierMethod,'ogk') || str
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2017...please install a more recent version of matlab (2017+) to use robustcov for outlier detection'])
 end
 if str2double(v(1:end-1)) < 2022 && strcmpi(options.outlierMethod,'iforest')
-    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2022...please install a more recent version of matlab (2022+) to use iforest for outlier detection'])
+    %error(['Uh oh, it looks like your version of matlab (' v ') is from before 2022...please install a more recent version of matlab (2022+) to use iforest for outlier detection'])
 end
 if str2double(v(1:end-1)) < 2015 && strcmpi(options.outlierMethod,'ocsvm')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2015...please install a more recent version of matlab (2015+) to use ocsvm for outlier detection'])
@@ -73,6 +73,9 @@ else
 end
 
 %mdl = [];
+if options.rep == 1
+    options.parallel = false;
+end
 if options.parallel
     parfor i = 1:options.rep
         [mdl{i},oidtmp{i}] = getOutls(tmpX,options);

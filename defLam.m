@@ -1,4 +1,5 @@
-function [lmxo,lmno,lms] = defLam(X,y,alpha,stnd,lmx,lmn,lamRatio,lst,ln)
+function [lmxo,lmno,lms] = defLam(X,y,alpha,stnd,lmx,lmn,lamRatio,lst,ln,logPref)
+%logPref = 'smaller';
 if isempty(stnd)
     stnd = true;
 end
@@ -27,12 +28,28 @@ if ~isempty(X) && ~isempty(y) % if X and y are not empty we assume the passed in
     end
 else
     lmno = lmn;
-    lmxo= lmx;
+    lmxo = lmx;
 end
+
+% if min(lmno) == 0
+%     if ~strcmpi(lst,'linear')
+%         warning('You have 0 lambda value so we will change our spacing from log to linear...')
+%         lst = 'linear';
+%     end
+% end
 
 lms = [];
 if strcmpi(lst,'linear')
     lms = linspace(min(lmno),max(lmxo),ln);
 elseif strcmpi(lst,'log')
-    lms = exp(linspace(log(min(lmno)),log(max(lmxo)),ln));
+    if strcmpi(logPref,'smaller')
+        if lmno ~= 0
+            lms = exp(linspace(log(min(lmno)),log(max(lmxo)),ln));
+        else
+           lms = exp(linspace(log(1e-100),log(max(lmxo)),ln));
+        end
+    elseif strcmpi(logPref,'larger')
+        lms = exp(linspace(log(min(lmxo)),log(max(lmno)),ln));
+        lms = fliplr(lms);
+    end
 end

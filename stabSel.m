@@ -1,4 +1,4 @@
-function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = stabSel(X,y,varargin)
+function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos] = stabSel(X,y,varargin)
 %
 % Identify a stable set of features in your data using the framework of
 % stability selection.
@@ -6,67 +6,152 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % Call: [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = stabSel(X, y);
 %
 %% ------------------------------------------------------------------------
-%% What do I need to provide stabSel:  ------------------------------------
+% What do I need to provide stabSel:  -------------------------------------
+% -------------------------------------------------------------------------
 % X: an n x p matrix of predictors
 % y: an n x 1 vector of responses
 %
-% Optional arguments can be supplied as well, like so (see defaults stabSel
-% will use below): stabSel(X,y,'maxVars',25,'stnd',false)
+% Optional arguments can be supplied as well, like so: 
+% % stabSel(X,y,'maxVars',25,'stnd',false)
 %
 %% ------------------------------------------------------------------------
-%% What does stabSel do? --------------------------------------------------
-% Use one of 13 feature selection algorithms ('selAlgo'; default is an
+% What does stabSel do? ---------------------------------------------------
+% -------------------------------------------------------------------------
+% Use one of 13 feature selection methods (see 'selAlgo'; default is an
 % elastic net) within the framework of stability selection to identify a
-% "stable" set of features (fk) from X that consistently predict your
-% response variable y across perturbed versions of your dataset. Given a
-% number of variables that a feature selection algorithm is forced to
-% select on average ('maxVars'), stabSel computes the empirical probability
-% of a feature being selected (fscmx) across bootstraps or subsamples of
-% your data ('sampType') and applies a probability threshold ('thresh') to
-% define a "stable set" (fk). A number of false positives () or a FWER
-% p-value ('fwer') can be given along with either 'thresh' *or* 'maxVars'
-% to have stabSel choose an appropriate 'thresh' or 'maxVars' value
-% (whichever is missing) that would ensure fewer than the specified false
-% positives or the selected FWER in the stable set. StabSel also supports
-% outlier detection and removal (one of 4 methods) either prior to, or
-% during, the resampling procedure. There are many options for you to
-% tinker with if you would like, but you you can leave these out of your
-% call and stabSel will ensure the selection of reasonable options.
+% "stable" set of features (see output 'fk') in input matrix X. The stable
+% set of features contains those features that have a higher probability of
+% being selected (see fscmx for empirical probabilities for each feature)
+% by your feature selection method across many perturbed versions of your
+% dataset (see 'samType' for resampling options). The feature selection
+% method selects the top N features in the dataset that are predictive of
+% your response variable, so the stable set of features can be thought of
+% as the columns of X that more consistently predict y.
 %
-% By default, stabSel will use an elastic net to select your features
-% across 50 complementary bootstraps of your data (this should be
-% appropriate, see Shah & Samworth below). Regularization parameters will
-% be used in lieu of a fixed number of selected variables. The average
-% number of variables selected across parameters will then be used to
-% determine a selection probability threshold for the stable set that
-% ensure fewer than 1 false positive. Outlier removal will not be
-% performed. StabSel has lots of arguments and the defaults are selected
-% based on their generalizability and efficiency. However, I encourage you
-% to try an adaptive elastic net as your selection algorithm, and to try
-% FWER (though this may be very stringent for your specific dataset).
+% The two most critical parameters in stability selection are the N
+% variables that a feature selection method selects on average (see
+% 'maxVars'), and the probability threshold that determines whether a
+% feature enters the stable set (see 'thresh'). Given these two parameters
+% (and assuming a default-set proportion of the data for resampling), we
+% can compute the number of false positives in the stable set (see
+% citations for equation), and by extension, the FWER p-value. This also
+% means that we can set the number of false positives that we would like
+% before starting stability selection (see'numFalsePos'; or we can  set
+% fwer, see 'fwer') and automatically determine the number of variables our
+% feature selection should be forced to select (maxVars), or the threshold
+% we should use for forming the stable set (thresh). It is easy to set
+% 'thresh' prior to running stabSel, but it can be tricky to set 'maxVars'.
+% That's because the number of features selected by some methods is
+% determined in an opaque way by a parameter that we have little insight
+% into. This means the range we use for this parameter will determine
+% maxVars. However, stabSel still allows you to set a specific 'maxVars'
+% ahead of time in such cases. That's because for some methods where this
+% occurs, we can simply look at a model's weights and use those as a
+% filter, while in other cases, we can force the selection method to select
+% maxVars *or fewer* features. This means that although we can control FWER
+% by specifying maxVars or thresh, in some cases, when we specify maxVars
+% rather than then thresh, we will end up with a lower effective FWER
+% (i.e., because the actual average number of features selected by the
+% selection method will be less than maxVars).
+% 
+% If you do not set 'maxVars' or 'thresh', stabSel will either use a
+% heuristic to select the number of variables the selection method should
+% be choosing on average (e.g., when using a filter where we *have* to know
+% how many features to select), or will use a series of regularization
+% parameters indescriminantly (i.e., without forcing selection of maxVars
+% or fewer features) and then choose an appropriate 'thresh'. In both
+% cases, by default, stabSel will try to ensure <1 false positive in the
+% stable set.
+% 
+% StabSel also supports outlier detection and removal (one of 4
+% methods) either prior to, or during, the resampling procedure. By
+% removing outliers within the resampling procedure, a more generalizable
+% method of outlier removal is implemented.
+% 
+% There are many options for you to tinker with in stabSel, but you you can
+% leave these out of your call and stabSel will use very reasonable
+% defaults. The exhaustive list of options are detailed in the following
+% section, which also tells you what stabSel internally sets each option to
+% if you don't refer to it/change it in your call.
 %
-% Note: if you are using stabSel to select features *for* a model,
-% consider ensuring that the data used for feature selection and model
-% validation and/or tuning is independent. This will give more accurate
-% prformance estimates for the model. Otherwise, in some projects it will
-% not be unreasonable for feature selection to be an analysis that is
-% independent of model building (e.g., when a more parsimonious model is
-% irrelevant).
+% A synthesized summary of main default options so you don't have to read
+% the documentation: by default, stabSel will use an elastic net to select
+% your features across 50 complementary bootstraps of your data (this
+% should be appropriate, see Shah & Samworth citaton). A series of
+% regularization parameters will be used in lieu of a fixed number of
+% selected variables. The series will be defined by the highest parameter
+% value that is estimated to select a single feature across all resampled
+% datasets.
+% 
+% The average number of variables selected across parameters will then be
+% used to determine a  probability threshold for the stable set of features
+% that ensures fewer than 1 false positive. Outlier removal will not be
+% performed.
+%
+% Final note: Consider using an adaptive elastic net (not default because
+% it requires more manual intervention; see documentation). If you are
+% using stabSel to select features *for* a model, consider ensuring that
+% the data used for feature selection and model validation and/or tuning is
+% independent. This will give more accurate prformance estimates for the
+% model. Otherwise, in some projects it will not be unreasonable for
+% feature selection to be an analysis that is independent of model building
+% (e.g., when a more parsimonious model is irrelevant).
 %
 %% ------------------------------------------------------------------------
-%% Citations  -------------------------------------------------------------
-% For original method and details of stability selection, see: Meinshausen,
-% N., & Bühlmann, P. (2010). Stability selection. Journal of the Royal
-% Statistical Society: Series B (Statistical Methodology), 72(4), 417-473.
+% ----------------------------- Outputs -----------------------------------
+% -------------------------------------------------------------------------
+% fk : indices of features that form the stable set (i.e., features kept) 
+% 
+% fsc : empirical probabilities for regularization parameters that were
+% used (you probably don't care about this)
 %
-% For complementary pairs, see: Shah, R. D., & Samworth, R. J. (2013).
-% Variable selection with error control: another look at stability
-% selection. Journal of the Royal Statistical Society: Series B
-% (Statistical Methodology), 75(1), 55-80.
+% fscmx : max empirical probability across regularization parameters for
+% each feature. Note, in stability selection we take the max proportion of
+% times that a feature was selected ACROSS all regularization parameters.
+% You can inspect this to get a different stable set using some other
+% probability threshold without re-running stabSel (but then ignore any
+% output about false positives or fwer)
+%
+% maxVars : # of variables/features specified to be selected in each
+% resampled dataset.
+%
+% alpha : alpha values used. Only applies to elastic net, lasso, ridge.
+% These will map onto a dimension of fsc (different for different
+% selection methods)
+%
+% lam : lambda values used. Only applies to elastic net, lasso, ridge, nca,
+% GPR, RF. These will map onto a dimension of fsc (different for different
+% selection methods)
+%
+% 'scores' : returns weighting of features for linear
+% regression/correlation, relieff, mrmr, nca.
+%
+% 'oid' : rows of X that are determined to be outliers.
+%
+% 'ctr' : indices of samples that were used to make each resampled dataset.
+%
+% 'mdl' : this is a model that was trained to identify outliers (can be
+% used to predict outliers in new data). If outliers were detected inside
+% the subsampling scheme, there is a model for each subsample. You can get
+% a consensus of the predictions of these models on new data.
+%
+% 'ep' : effective FWER p-value based on the average # of features selected
+% across resampled datasets and the threshold you selected.
+%
+% 'empMaxVars' : empirical maxVars. If your selection algorithm is a
+% filter, then this will equal maxVars. However, algorithms that have
+% regularization parameters that shrink features to zero will select a
+% number of features that are not equal to maxVars because it is impossible
+% to tell exactly which parameters will give exactly the number of features
+% specified. In some cases the number of features taken from each resampled
+% dataset will be fixed to *not more than*  maxVars. Or, maxVars can be
+% ignored and a threshold selected based on empirical maxVars to maintain a
+% predetermined FWER.
 %
 %% ------------------------------------------------------------------------
-%% General optional arguments ---------------------------------------------
-% 'samtype' : determines the resampling scheme. Set to 'subsample' to take
+% General optional arguments (apply to all selection methods) -------------
+% -------------------------------------------------------------------------
+% 'samType' : determines the resampling scheme. Set to 'subsample' to take
 % subsamples of your data as per the original stability selection paper
 % (see section above). Set to 'bootstrap' to take bootstraps of your data.
 % It's possible bootstrapping injects more noise into the data, which is
@@ -164,9 +249,10 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % 'verbose' : set to true to get feedback in the command window about what
 % stabSel is doing. Default: false.
 %
-% --------------------------------------------------------------------------
-% ------------ Optional arguments for > 1 selection algorithm -------------
-% ------------ - (elastic net, lasso, ridge, nca, gpr, rf) ----------------
+%% ------------------------------------------------------------------------
+% ------- Optional arguments that apply to > 1 selection algorithm --------
+% -------------- (elastic net, lasso, ridge, nca, gpr, rf) ----------------
+% -------------------------------------------------------------------------
 % 'lam' : user-specified lambda (regularization parameter) sequence to be
 % used for elastic net, lasso, ridge, GPR, or NCA. When this is empty
 % (i.e., by default), lambdas are computed automatically between lmx and
@@ -260,8 +346,10 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % false. Corresponds to a p-value to use for selecting features for
 % correlation and robust linear regression. Corresponds to weight threshold
 % for NCA (but should be 0 in most cases). Default: [].
-% -------------------------------------------------------------------------
+%
+%% ------------------------------------------------------------------------
 % ------------ Optional arguments for elastic net, lasso, ridge -----------
+% -------------------------------------------------------------------------
 % stabSel was developed with lasso regression in mind so you may notice
 % more options for it at the moment (see original stability selection paper
 % referenced above).
@@ -324,29 +412,27 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % and maxVars is empty, then maxVars will be automatically computed based
 % on FWER/false positives (if you use any of the above selection
 % algorithms). Default: false.
-%--------------------------------------------------------------------------
-% --------------------- Optional arguments for nca ------------------------
 %
-%--------------------------------------------------------------------------
-% ------ Optional arguments for corr and robust linear regression ---------
-%
-%--------------------------------------------------------------------------
-% ------------ Optional arguments for relieff -----------------------------
+%% ------------------------------------------------------------------------
+% ------------------ Optional arguments for relieff -----------------------
+% -------------------------------------------------------------------------
 % 'rK' : determines k in knn (# of neighbors). Default: [1:14
 % 15:10:size(X,2)/2].
 %
 % 'rE' : sigma, or distance scaling factor. Consider changing this to just
 % 50 if stabSel is taking too long on your data. Default: [10:15:200].
 %
-%--------------------------------------------------------------------------
-% ------------ Optional arguments for GPR ---------------------------------
+%% ------------------------------------------------------------------------
+% ---------------------- Optional arguments for GPR -----------------------
+% -------------------------------------------------------------------------
 % None but as a note, GPR will use: ardsquaredexponential kernel
 % function, lbfgs optimizer, fully independent conditional approximation
 % for prediction, and subset of regressors approximation for the fit
 % method.
 %
-%--------------------------------------------------------------------------
-% ------------------- Optional arguments for RF ---------------------------
+%% ------------------------------------------------------------------------
+% ---------------------- Optional arguments for RF ------------------------
+% -------------------------------------------------------------------------
 % 'lamRF' : this determines the number of learning cycles to use for the
 % random forest. Can be an n x 1 sequence. More options for RF are
 % available but not currently implemented due to computational costs
@@ -360,8 +446,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % splits are round(linspace(1,size(X,2)-1,15)). Default values for learning
 % rate are linspace(1e-3,1,10). Default: [].
 %
-%--------------------------------------------------------------------------
+%% ------------------------------------------------------------------------
 % ---------- Optional arguments for outlier detection/removal -------------
+% -------------------------------------------------------------------------
 % 'outlier' : determines where outlier detection removal will be performed
 % on matrix X. Set to 'outside' to perform outlier detection before
 % subsampling and 'inside' to perform outlier detection inside the
@@ -424,49 +511,28 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % outlierMethod).
 %
 %% ------------------------------------------------------------------------
-%% Outputs ----------------------------------------------------------------
-% fk : stable set of features (i.e., features kept) 
-% 
-% fsc : empirical probabilities across regularization parameters that were
-% used.
+% --------------------- Optional arguments for nca ------------------------
+% -------------------------------------------------------------------------
 %
-% fscmx : max empirical probability across regularization parameters.
-% Note, in stability selection we take the max proportion of times that a
-% feature was selected ACROSS all regularization parameters.
+%% ------------------------------------------------------------------------
+% ------ Optional arguments for corr and robust linear regression ---------
+% -------------------------------------------------------------------------
 %
-% maxVars : # of variables/features selected in each subsample.
+%% ------------------------------------------------------------------------
+% Citations  --------------------------------------------------------------
+% -------------------------------------------------------------------------
+% For original method and details of stability selection, see: Meinshausen,
+% N., & Bühlmann, P. (2010). Stability selection. Journal of the Royal
+% Statistical Society: Series B (Statistical Methodology), 72(4), 417-473.
 %
-% alpha : alpha values used. Only applies to elastic net, lasso, ridge.
-%
-% lam : lambda values used. Only applies to elastic net, lasso, ridge, nca,
-% GPR, RF.
-%
-% 'scores' : returns weighting of features for linear
-% regression/correlation, relieff, mrmr, nca. 
-%
-% 'oid' : rows of X that are determined to be outliers.
-%
-% 'ctr' : indices of samples that were used on each subsample. 
-%
-% 'mdl' : this is a model that was trained to identify outliers. If
-% outliers were detected inside the subsampling scheme, there is a model
-% for each subsample. You can get a consensus of the predictions of these
-% models on new data.
-%
-% 'ep' : effective FWER p-value based on the empirical maxVars and the
-% threshold you selected. 
-%
-% 'empMaxVars' : empirical maxVars. If your selection algorithm is a
-% filter, then this will equal maxVars. However, algorithms that have
-% regularization parameters that shrink features to zero will select a
-% number of features that are not equal to maxVars because it is impossible
-% to tell exactly which parameters will give exactly the number of features
-% specified. In some cases the number of features taken from each
-% subsamples will be fixed to less than maxVars. Or, maxVars can be ignored
-% and a threshold selected based on empirical maxVars to maintain a
-% predetermined FWER.
-%
-%% Internal notes----------------------------------------------------------
+% For complementary pairs, see: Shah, R. D., & Samworth, R. J. (2013).
+% Variable selection with error control: another look at stability
+% selection. Journal of the Royal Statistical Society: Series B
+% (Statistical Methodology), 75(1), 55-80.
+
+%% ------------------------------------------------------------------------
+% Internal notes ----------------------------------------------------------
+% -------------------------------------------------------------------------
 % 1) make lasso return weights for lambda that was chosen as scores
 % 2) verbose warnings, displays are not consistent across algorithms
 % 3) need more verbose options and feedback
@@ -483,15 +549,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = sta
 % load in defaults
 options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],...
     'lam',[],'lamInside','during','lamAEN',[],'lamRatio',1e-4,'adaptOutside',...
-    false,'lmn',[],'lmx',[],'ln',1000,'prop',0.5,'rep',200,'stnd',true,'numFalsePos',...
-    1,'fwer',[],'thresh',0.9,'parallel',false,'adaptive',false,...
+    false,'lmn',[],'lmx',[],'ln',1000,'prop',0.5,'rep',50,'stnd',true,'numFalsePos',...
+    [],'fwer',[],'thresh',0.9,'parallel',false,'adaptive',false,...
     'outlier','none','outlierPrepro','none','outlierPreproNonconsec',true,...
     'propOutliers',0.1,'outlierPreproP',0.05,'outlierPreproN',5000,...
     'outlierReps',1,'outlierRepThresh',1,'outlierMethod','median',...
     'outlierDir','row','outlierThresh',3,'selAlgo','en','lst','linear',...
     'gam',1,'lrp',0.05,'rK',[1:14 15:10:size(X,2)/2],'rE',[10:15:200],...
-    'lamRF',[],'lr',[],'mls',[],'mns',[],'verbose',true,'logDirPref','smaller',...
-    'filter',false,'filterThresh',0.05,'samtype','subsample','compPars',false,...
+    'lamRF',[],'lr',[],'mls',[],'mns',[],'verbose',false,'logDirPref','smaller',...
+    'filter',false,'filterThresh',0.05,'samType','bootstrap','compPars',true,...
     'ridgeRegSelect','largest','lamOutlier',true,'fixMax',false);
 optionNames = fieldnames(options);
 rng shuffle
@@ -548,6 +614,11 @@ if strcmpi(options.selAlgo,'ridge')
     options.selAlgo = 'en';
 end
 
+% fix numFalsePos
+if isempty(options.numFalsePos) && isempty(options.fwer)
+   options.numFalsePos = 1;
+end
+
 % fix size of lam
 if size(options.lam,1) == 1 && size(options.lam,2) > 1
     options.lam = options.lam';
@@ -577,7 +648,7 @@ end
 % warning about threshold if it is known--cannot be below 0.5 if you
 % want to do fwer (p or num false positives)
 if ~isempty(options.thresh) && options.thresh < 0.5 && (~isempty(options.numFalsePos) || ~isempty(options.fwer))
-    warning('You have asked to estimate some false positives in the stable set, but your threshold is below 0.05. We can only estimate false positives when thresh is > 0.05. Fixing thresh to 0.0501.')
+    warning('You have asked to estimate some false positives in the stable set, but your threshold is below 0.5. We can only estimate false positives when thresh is > 0.5. Fixing thresh to 0.501.')
     options.thresh = 0.501;
 end
 
@@ -609,13 +680,13 @@ end
 % if user-specified threshold exists
 if isempty(options.maxVars) && ~isempty(options.thresh)
    if ~isempty(options.fwer)
-       tmpii = linspace(0.0001,size(X,2)/3,10000);
+       tmpii = linspace(0.0001,size(X,2)/3,100000);
         disp(['Finding number of false positives for which FWER should be : ' num2str(options.fwer)])
         for i = 1:length(tmpii)
             n1 = sqrt(size(X,2)*(tmpii(i)/(1/((2*options.thresh)-1))));
             tmpi(i,1) = ((1/((2*options.thresh)-1))*((n1.^2)/size(X,2)))/n1;
         end
-        id = find(tmpi < 0.05,1,'last');
+        id = find(tmpi < options.fwer,1,'last');
         options.numFalsePos = tmpii(id);
    end
    n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
@@ -625,9 +696,9 @@ if isempty(options.maxVars) && ~isempty(options.thresh)
        options.maxVars = round(n1+1)-1;
    end
    if options.maxVars == 0
-       error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives you are comfortable with, or decrease the threshold.')
+       error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives (or fwer) you are comfortable with, or decrease the threshold.')
    else
-       disp(['Average # of features selected by regularization parameter (maxVars) should be : ' num2str(options.maxVars) '. This will ensure ' num2str(options.numFalsePos) ' false positives.'])
+       disp(['Average # of features selected by method (maxVars) should be : ' num2str(options.maxVars) '. This will ensure ' num2str(options.numFalsePos) ' or fewer false positives'])
    end
 end
 
@@ -821,7 +892,7 @@ if options.prop == 1
 end
 for j = 1:options.rep
     if options.prop < 1
-        if strcmpi(options.samtype,'subsample')
+        if strcmpi(options.samType,'subsample')
             if manualSubs
                 s = 1:length(y);
                 if options.compPars && j ~= 1
@@ -837,7 +908,7 @@ for j = 1:options.rep
                 c3 = cvpartition(size(X,1),'Holdout',options.prop);
                 ctr{j} = find(test(c3)==1);
             end
-        elseif strcmpi(options.samtype,'bootstrap')
+        elseif strcmpi(options.samType,'bootstrap')
             s = 1:length(y);
             if options.compPars && j ~= 1
                s = setdiff(s,ctr{j-1});
@@ -923,7 +994,7 @@ end
 for i = 1:options.rep
     if options.verbose
         if i == 1
-            disp(['Starting feature selection. Working on subsample ' num2str(i) ' of ' num2str(options.rep)])
+            disp(['Starting feature selection. Working on resample ' num2str(i) ' of ' num2str(options.rep)])
         else
             disp(['Working on subsample ' num2str(i) ' of ' num2str(options.rep)])
         end
@@ -1110,13 +1181,13 @@ for i = 1:options.rep
     % start mrmr...
     if strcmpi(options.selAlgo,'mrmr')
         [id,scores{i}] = fsrmrmr(Xtmp,Ytmp);
-        fsc(s(id(1:options.maxVars))) = fsc(s(id(1:options.maxVars)))+1;
+        fsc(si(id(1:options.maxVars))) = fsc(si(id(1:options.maxVars)))+1;
     end
     
     % start ftest...
     if strcmpi(options.selAlgo,'ftest')
         [id,scores{i}] = fsrftest(Xtmp,Ytmp);
-        fsc(s(id(1:options.maxVars))) = fsc(s(id(1:options.maxVars)))+1;
+        fsc(si(id(1:options.maxVars))) = fsc(si(id(1:options.maxVars)))+1;
     end
     
     % start relieff...
@@ -1139,9 +1210,7 @@ for i = 1:options.rep
         end
         for jj = 1:length(options.rK)
             for kk = 1:length(options.rE)
-                s = 1:size(X,2);
-                s(oid{i}) = [];
-                fsc(s(id{jj,kk}(1:options.maxVars)),jj,kk) = fsc(s(id{jj,kk}(1:options.maxVars)),jj,kk)+1;
+                fsc(si(id{jj,kk}(1:options.maxVars)),jj,kk) = fsc(si(id{jj,kk}(1:options.maxVars)),jj,kk)+1;
             end
         end
     end
@@ -1176,7 +1245,7 @@ for i = 1:options.rep
             for jj = 1:length(lam)
                 idtmp = find(scores{jj} > options.filterThresh);
                 anm(jj,1) = length(idtmp);
-                fsc(s(idtmp)) = fsc(s(idtmp))+1;
+                fsc(si(idtmp)) = fsc(si(idtmp))+1;
             end
             empMaxVars = mean([empMaxVars mean(anm)],'omitnan');
         end
@@ -1194,7 +1263,7 @@ for i = 1:options.rep
             [~,id{jj}] = sort(scores{jj},'descend');
         end
         for jj = 1:size(lam,1)
-            fsc(s(id{jj}(1:options.maxVars))) = fsc(s(id{jj}(1:options.maxVars)))+1;
+            fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
         end
     end
     
@@ -1217,7 +1286,7 @@ for i = 1:options.rep
                     mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
                     scores{jj} = oobPermutedPredictorImportance(mdl);
                     [~,id{jj}] = sort(scores{jj},'descend');
-                    fsc(s(id{jj}(1:options.maxVars))) = fsc(s(id{jj}(1:options.maxVars)))+1;
+                    fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
         end
     end
 end
@@ -1236,13 +1305,13 @@ end
 usrt = true;
 if isempty(options.thresh)
     if ~isempty(options.fwer)
-        tmpii = linspace(0.0001,size(X,2)/3,10000);
+        tmpii = linspace(0.0001,size(X,2)/3,100000);
         disp(['Finding number of false positives that should give FWER of : ' num2str(options.fwer)])
         for i = 1:length(tmpii)
             n1 = ((((empMaxVars.^2)/size(X,2))/tmpii(i))+1)/2;
             tmpi(i,1) = (1/((2*n1)-1))*((empMaxVars.^2)/size(X,2))/empMaxVars;
         end
-        id = find(tmpi < 0.05,1,'last');
+        id = find(tmpi < options.fwer,1,'last');
         options.numFalsePos = tmpii(id);
         disp(['Found a good number of false positives : ' num2str(options.numFalsePos)])
     end
@@ -1261,8 +1330,10 @@ end
 % show effective FWER
 ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
 disp(['Effective FWER p-value is: ' num2str(ep) '. This may be slightly higher than your selected fwer due to rounding. Discrepancy may be higher when maxVars is lower.'])
-disp(['Numer of features that survive effective FWER p-value: ' num2str(length(fk))])
+disp(['Number of features that survived effective FWER p-value: ' num2str(length(fk))])
 
 % output
 maxVars = options.maxVars;
 alpha = options.alpha;
+thresh = options.thresh;
+numFalsePos= options.numFalsePos;

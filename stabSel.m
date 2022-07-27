@@ -638,7 +638,7 @@ end
 % fix fixMax if necessary
 if strcmpi(options.selAlgo,'en') && ~isempty(options.maxVars) && ~options.fixMax
     options.fixMax = true;
-    warning('When passing in a maxVars with lasso, ridge, elastic net, or nca we have to set fixMax to true to ensure a max of maxVars is returned across regularization parameters')
+    warning('When passing in a maxVars with lasso, ridge, elastic net, or nca we have to set fixMax to true to ensure a max of maxVars is returned across regularization parameters. Setting it to true now.')
 end
 if (strcmpi(options.selAlgo,'nca') || strcmpi(options.selAlgo,'corr') || strcmpi(options.selAlgo,'robustLR')) && ~isempty(options.maxVars) && ~options.filter
     options.filter = true;
@@ -1069,7 +1069,7 @@ for i = 1:options.rep
 %                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
 %                end
            end
-           empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF))'])],'omitnan');
+           empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF),1)'])],'omitnan');
 
            if options.verbose
                disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])

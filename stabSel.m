@@ -687,13 +687,22 @@ if isempty(options.maxVars) && ~isempty(options.thresh)
             tmpi(i,1) = ((1/((2*options.thresh)-1))*((n1.^2)/size(X,2)))/n1;
         end
         id = find(tmpi < options.fwer,1,'last');
-        options.numFalsePos = tmpii(id);
+        if ~isempty(id)
+            options.numFalsePos = tmpii(id);
+        else
+            options.numFalsePos = NaN;
+            warning('It was not possible to find a number of false positives that would ensure selected fwer. numFalsePos will be set to 1 to estimate maxVars.')
+        end
    end
-   n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
-   if n1 > 1
-       options.maxVars = round(n1);
+   if ~isnan(options.numFalsePos)
+       n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
+       if n1 > 1
+           options.maxVars = round(n1);
+       else
+           options.maxVars = round(n1+1)-1;
+       end
    else
-       options.maxVars = round(n1+1)-1;
+        options.maxVars = round(sqrt(0.8*size(X,2)));
    end
    if options.maxVars == 0
        error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives (or fwer) you are comfortable with, or decrease the threshold.')
@@ -936,7 +945,7 @@ for j = 1:options.rep
                 end
             else
                 tmpid = setdiff([1:length(y)],ctr{j});
-                [Xtmp,~,bin,fitin] = alasso(X(ctr{j},:),y(ctr{j}),X(tmpid,:),y(tmpid),[],options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+                [Xtmp,~,bin,fitin] = alasso(X(ctr{j},:),y(ctr{j}),X(tmpid,:),y(tmpid),1e-300,options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
                 for kk = 1:length(options.alpha)
                     [~,~,tmpl] = defLam(Xtmp,y(ctr{j}),options.alpha(kk),false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
                     tmplmn(kk,j) = min(tmpl);
@@ -1042,7 +1051,7 @@ for i = 1:options.rep
           [Xtmp,~,~,~] = alasso(Xtmp,Ytmp,X(tmpid,:),y(tmpid),1e-300,stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);  
           stnd = false; % fix stnd for lasso OF weights
        end
-       
+
        % now do lasso for each alpha (within each we pass in our lams)
        for kk = 1:length(options.alpha)
            if strcmpi(options.lamInside,'during')
@@ -1312,10 +1321,19 @@ if isempty(options.thresh)
             tmpi(i,1) = (1/((2*n1)-1))*((empMaxVars.^2)/size(X,2))/empMaxVars;
         end
         id = find(tmpi < options.fwer,1,'last');
-        options.numFalsePos = tmpii(id);
+        if ~isempty(id)
+            options.numFalsePos = tmpii(id);
+        else
+            options.numFalsePos = NaN;
+             warning('It was not possible to find a number of false positives that would ensure selected fwer. Thresh will be set to 1.')
+        end
         disp(['Found a good number of false positives : ' num2str(options.numFalsePos)])
     end
-    options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+    if ~isnan(options.numFalsePos)
+        options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+    else
+        options.thresh = 1;
+    end
     usrt = false;
     disp(['Probability threshold for features to enter stable set was calculated to be: ' num2str(options.thresh)])
 end

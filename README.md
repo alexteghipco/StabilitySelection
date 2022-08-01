@@ -8,6 +8,6 @@ Refer to stabSel.m for documentation on both the code and the stability selectio
 Disclaimer: stabSel implements a ton of options, including many different ways to select features within the stability selection framework. The defaults have been tested fairly well and work fine. Lots of the combinations of options available to you have been debugged and I'm continuing testing (will update this readme when this is completed). However, the sheer number of options available means that you are likely to use stabSel in a way I have not anticipated yet. Send any issues/comments to: alex.teghipco@sc.edu
 
 For methods, see: 
-For original method and details of stability selection, see: Meinshausen, N., & Bühlmann, P. (2010). Stability selection. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 72(4), 417-473.
+Meinshausen, N., & Bühlmann, P. (2010). Stability selection. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 72(4), 417-473.
 
-For complementary pairs, see: Shah, R. D., & Samworth, R. J. (2013). Variable selection with error control: another look at stability selection. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 75(1), 55-80.
+Shah, R. D., & Samworth, R. J. (2013). Variable selection with error control: another look at stability selection. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 75(1), 55-80.

@@ -1139,7 +1139,7 @@ for i = 1:options.rep
         if ~options.filter
             id = find(pV <= options.filterThresh);
         else
-            [~,idtmp] = sort(rV,'descend');
+            [~,idtmp] = sort(abs(rV),'descend');
             id = idtmp(1:options.maxVars);
         end
         fsc(si(id)) = fsc(si(id))+1;

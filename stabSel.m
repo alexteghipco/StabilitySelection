@@ -3,16 +3,16 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % Identify a stable set of features in your data using the framework of
 % stability selection.
 %
-% Call: [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] = stabSel(X, y);
+% Call: [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars] =
+% stabSel(X, y);
 %
 %% ------------------------------------------------------------------------
 % What do I need to provide stabSel:  -------------------------------------
 % -------------------------------------------------------------------------
-% X: an n x p matrix of predictors
-% y: an n x 1 vector of responses
+% X: an n x p matrix of predictors y: an n x 1 vector of responses
 %
-% Optional arguments can be supplied as well, like so: 
-% % stabSel(X,y,'maxVars',25,'stnd',false)
+% Optional arguments can be supplied as well, like so: %
+% stabSel(X,y,'maxVars',25,'stnd',false)
 %
 %% ------------------------------------------------------------------------
 % What does stabSel do? ---------------------------------------------------
@@ -28,46 +28,48 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % your response variable, so the stable set of features can be thought of
 % as the columns of X that more consistently predict y.
 %
-% The two most critical parameters in stability selection are the N
+% The two most critical parameters in stability selection are the q
 % variables that a feature selection method selects on average (see
-% 'maxVars'), and the probability threshold that determines whether a
+% 'maxVars'), and the probability threshold pi that determines whether a
 % feature enters the stable set (see 'thresh'). Given these two parameters
 % (and assuming a default-set proportion of the data for resampling), we
-% can compute the number of false positives in the stable set (see
-% citations for equation), and by extension, the FWER p-value. This also
-% means that we can set the number of false positives that we would like
-% before starting stability selection (see'numFalsePos'; or we can  set
-% fwer, see 'fwer') and automatically determine the number of variables our
-% feature selection should be forced to select (maxVars), or the threshold
-% we should use for forming the stable set (thresh). It is easy to set
-% 'thresh' prior to running stabSel, but it can be tricky to set 'maxVars'.
-% That's because the number of features selected by some methods is
-% determined in an opaque way by a parameter that we have little insight
-% into. This means the range we use for this parameter will determine
-% maxVars. However, stabSel still allows you to set a specific 'maxVars'
-% ahead of time in such cases. That's because for some methods where this
-% occurs, we can simply look at a model's weights and use those as a
-% filter, while in other cases, we can force the selection method to select
-% maxVars *or fewer* features. This means that although we can control FWER
-% by specifying maxVars or thresh, in some cases, when we specify maxVars
-% rather than then thresh, we will end up with a lower effective FWER
-% (i.e., because the actual average number of features selected by the
-% selection method will be less than maxVars).
-% 
+% can compute the upper bound on the number of false positives
+% ('numFalsePos') in the stable set (see citations for equation). This is
+% effectively the per-family error rate, which is more stringent than FWER.
+% We can also get an FDR-like p-value by taking the proportion of the
+% stable set that would be the upper bound on the number of false
+% positives. If we know two of these three main variables (either number of
+% false positives or FDR, maxVars, or thresh), we can solve for the one
+% that remains. Typically, we set either the number of false positives or
+% FDR. It is easy to set 'thresh' prior to running stabSel, but it can be
+% tricky to set 'maxVars'. That's because the number of features selected
+% by some algorithms/learners is determined in an opaque way by a parameter
+% that we have little insight into. The range we use for this parameter
+% will determine maxVars. However, stabSel still allows you to set a
+% specific 'maxVars' ahead of time in such cases. That's because for some
+% methods where this occurs, we can simply look at a model's weights and
+% use those as a filter, while in other cases, we can force the selection
+% method to select maxVars *or fewer* features. This means that although we
+% can control an FDR-like error rate by specifying maxVars or thresh, in
+% some cases, when we specify maxVars rather than then thresh, we will end
+% up with a lower effective FDR-like p-value (i.e., because the actual
+% average number of features selected by the selection method will be less
+% than maxVars).
+%
 % If you do not set 'maxVars' or 'thresh', stabSel will either use a
 % heuristic to select the number of variables the selection method should
 % be choosing on average (e.g., when using a filter where we *have* to know
 % how many features to select), or will use a series of regularization
 % parameters indescriminantly (i.e., without forcing selection of maxVars
 % or fewer features) and then choose an appropriate 'thresh'. In both
-% cases, by default, stabSel will try to ensure <1 false positive in the
+% cases, by default, stabSel will try to ensure < 1 false positive in the
 % stable set.
-% 
-% StabSel also supports outlier detection and removal (one of 4
-% methods) either prior to, or during, the resampling procedure. By
-% removing outliers within the resampling procedure, a more generalizable
-% method of outlier removal is implemented.
-% 
+%
+% StabSel also supports outlier detection and removal (one of 4 methods)
+% either prior to, or during, the resampling procedure. By removing
+% outliers within the resampling procedure, a more generalizable method of
+% outlier removal is implemented.
+%
 % There are many options for you to tinker with in stabSel, but you you can
 % leave these out of your call and stabSel will use very reasonable
 % defaults. The exhaustive list of options are detailed in the following
@@ -82,7 +84,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % selected variables. The series will be defined by the highest parameter
 % value that is estimated to select a single feature across all resampled
 % datasets.
-% 
+%
 % The average number of variables selected across parameters will then be
 % used to determine a  probability threshold for the stable set of features
 % that ensures fewer than 1 false positive. Outlier removal will not be
@@ -100,8 +102,8 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % ----------------------------- Outputs -----------------------------------
 % -------------------------------------------------------------------------
-% fk : indices of features that form the stable set (i.e., features kept) 
-% 
+% fk : indices of features that form the stable set (i.e., features kept)
+%
 % fsc : empirical probabilities for regularization parameters that were
 % used (you probably don't care about this)
 %
@@ -110,14 +112,14 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % times that a feature was selected ACROSS all regularization parameters.
 % You can inspect this to get a different stable set using some other
 % probability threshold without re-running stabSel (but then ignore any
-% output about false positives or fwer)
+% output about false positives, fdr or fwer)
 %
 % maxVars : # of variables/features specified to be selected in each
 % resampled dataset.
 %
 % alpha : alpha values used. Only applies to elastic net, lasso, ridge.
-% These will map onto a dimension of fsc (different for different
-% selection methods)
+% These will map onto a dimension of fsc (different for different selection
+% methods)
 %
 % lam : lambda values used. Only applies to elastic net, lasso, ridge, nca,
 % GPR, RF. These will map onto a dimension of fsc (different for different
@@ -135,8 +137,8 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % the subsampling scheme, there is a model for each subsample. You can get
 % a consensus of the predictions of these models on new data.
 %
-% 'ep' : effective FWER p-value based on the average # of features selected
-% across resampled datasets and the threshold you selected.
+% 'ep' : effective FDR-like p-value based on the average # of features
+% selected across resampled datasets and the threshold you selected.
 %
 % 'empMaxVars' : empirical maxVars. If your selection algorithm is a
 % filter, then this will equal maxVars. However, algorithms that have
@@ -146,7 +148,13 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % specified. In some cases the number of features taken from each resampled
 % dataset will be fixed to *not more than*  maxVars. Or, maxVars can be
 % ignored and a threshold selected based on empirical maxVars to maintain a
-% predetermined FWER.
+% predetermined FDR-like p-threshold.
+%
+% 'thresh' : returns the threshold used to form the stable set. 
+%
+% 'numFalsePos' : returns the upper bound on the number of false positives
+% in the stable set. Corresponds to the per familywise error rate, which is
+% more stringent than FWER.
 %
 %% ------------------------------------------------------------------------
 % General optional arguments (apply to all selection methods) -------------
@@ -172,8 +180,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % 'prop' : proportion of data to resample (i.e., 0.7 means 70% of the data
 % will be used in each subsample or that a bootstrap will be of a size that
 % is 70% of the data; it makes sense to increase this number above default
-% if the dataset is very small but this may break FWER/false positive
-% calculations). If 'prop' is 1 we use all of the data. Default: 0.5.
+% if the dataset is very small but this may break FWER/FDR-like p/false
+% positive calculations). If 'prop' is 1 we use all of the data. Default:
+% 0.5.
 %
 % 'propN' : if you would like to specify the number of samples to use in
 % each resample (rather than the proportion of the data), set 'prop' to be
@@ -186,14 +195,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % proportion *before* outlier removal and ensure that this is the number of
 % samples that is taken *after* outlier removal. Default: false.
 %
-% 'numFalsePos' : threshold for the number of false positives you would
-% like to ensure in the stable set (<). You should provide either this OR
-% fwer. This will have no effect if both 'maxVars' and 'thresh' are passed
-% in. Default: 1.
+% 'numFalsePos' : threshold for the upper bound on the number of false
+% positives you would like to ensure in the stable set. Corresponds to the
+% per family error rate. You should provide either this OR 'FDR'. This will
+% have no effect if both 'maxVars' and 'thresh' are passed in. This can be
+% a whole value, or a decimal.  Default: 1.
 %
-% 'fwer' : FWER p-value threshold for stable set. You should provide either
-% this OR fwer. This will have no effect if both 'maxVars' and 'thresh' are
-% passed in. Default: [].
+% 'fdr' : FDR-like p-value threshold for stable set. You should provide
+% either this OR 'numFalsePos'. This will have no effect if both 'maxVars'
+% and 'thresh' are passed in. Default: [].
 %
 % 'maxVars' : average # of variables the selection algorithm should choose
 % on each subsample. Consider passing this into stabSel as blank if your
@@ -264,11 +274,11 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % sparsest model possible. If adaptive is set to true, the values you give
 % 'lam' will apply to the elastic net or lasso being used to select
 % features and NOT to the ridge regression used to initially weight the
-% data (see lamAEN below for where to supply those if you would like). Note,
-% Default lambda values for NCA will be set between 0.0001 to 100 before
-% weighting by standard deviation of the response variable y. For GPR,
-% lambda values refer to the regularization standard deviation values. By
-% default, these will be set between the standard deviation of your
+% data (see lamAEN below for where to supply those if you would like).
+% Note, Default lambda values for NCA will be set between 0.0001 to 100
+% before weighting by standard deviation of the response variable y. For
+% GPR, lambda values refer to the regularization standard deviation values.
+% By default, these will be set between the standard deviation of your
 % response variable y multiplied by 0.01 and then divided/multiplied by 3.
 % Weighting will be omitted if you supply your own values for NCA or GPR.
 % Default:
@@ -305,8 +315,8 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %, ridge, NCA, and GPR. For elastic net, lasso and ridge, leaving this
 % blank will multiply lmx by 'lamRatio' to get lmn. For NCA, the default is
 % .001 adjusted by the std(y) and for GPR the default is 1e-2*std(y)/3. For
-% NCA only, if you pass in a value, it will still be weighted by std(y).
-% If you would like to specify exact min/max lambdas for NCA, use 'lam'.
+% NCA only, if you pass in a value, it will still be weighted by std(y). If
+% you would like to specify exact min/max lambdas for NCA, use 'lam'.
 % Default: [].
 %
 % 'ln' : number of lambda values to include in an automatically generated
@@ -319,22 +329,22 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % Consider using log for en, lasso, ridge (but argument also applies to GPR
 % and NCA). This recommendation is based on the fact that in most cases,
 % lmx will be quite high, causing most models to be sparse. Alternatively,
-% increase 'ln' dramatically (to maybe 10,000; also increase 'lamRatio') but
-% this will not be very efficient. Default: 'linear'.
+% increase 'ln' dramatically (to maybe 10,000; also increase 'lamRatio')
+% but this will not be very efficient. Default: 'linear'.
 %
 % 'logDirPref' : if 'lst' is set to 'log', this will determine which end of
 % the lambda sequence you would like to sample more. Set this to 'smaller'
 % to sample more lambda values closer to lmn. Set this to 'larger' to
 % sample more lambda values closer to lmx (i.e., sparser models). Default:
-% 'smaller'. 
+% 'smaller'.
 %
 % 'lamOutlier' : only applies when lamInside is set to 'across'. Sometimes
 % a lambda sequence for one subsample will be drastically different than
 % the lambda sequence for another subsample. If you want to define a single
 % lambda sequence across all subsamples, it is helpful to remove outlier
 % lmn and lmx values as we take the lowest lmn and highest lmx to define
-% this single sequence. If set to true, we will remove lmx values above
-% the 95th percentile (as defined across subsamples). Default: true.
+% this single sequence. If set to true, we will remove lmx values above the
+% 95th percentile (as defined across subsamples). Default: true.
 %
 % 'filter' : It is possible to use some selection algorithms as a filter
 % (robust linear regression, correlation, NCA). Set to true to use as
@@ -356,7 +366,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'adaptive' : sets EN or lasso to be adaptive. Lasso lacks oracle
 % properties, may have 'inaccurate' weights, or inconsisttently select
-% variables (e.g., noise variables which is especially true when n >> p;
+% variables (e.g., noise variables which is especially true when p >> n;
 % see Zou & Zhang, 2009). Adaptive lasso has oracle properties but lacks
 % the ability to select *all* of the correlated variables that are
 % predictive. The L2 regualrization in EN fixes this, but EN lacks oracle
@@ -404,8 +414,8 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % to get the max lambda, then use this ratio to get the smallest lambda.
 % Default: 1e-4.
 %
-% 'fixMax' : can be set to true to force elastic net, lasso, ridge,
-% to return a maximum of 'maxVars' features irrespective of regularization
+% 'fixMax' : can be set to true to force elastic net, lasso, ridge, to
+% return a maximum of 'maxVars' features irrespective of regularization
 % parameter lambda. This is set to true if using any of these selection
 % algorithms and passing in maxVars to ensure we do not select more than
 % the number of variables you want. Note also that if fixMax is set to true
@@ -425,10 +435,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % ---------------------- Optional arguments for GPR -----------------------
 % -------------------------------------------------------------------------
-% None but as a note, GPR will use: ardsquaredexponential kernel
-% function, lbfgs optimizer, fully independent conditional approximation
-% for prediction, and subset of regressors approximation for the fit
-% method.
+% None but as a note, GPR will use: ardsquaredexponential kernel function,
+% lbfgs optimizer, fully independent conditional approximation for
+% prediction, and subset of regressors approximation for the fit method.
 %
 %% ------------------------------------------------------------------------
 % ---------------------- Optional arguments for RF ------------------------
@@ -479,15 +488,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'outlierMethod' : specify method for outlier detection. Set to 'median',
 % 'mean', 'quartiles', 'grubbs', 'gesd' to use isoutlier.m, which will
-% prform outlier detection using some scaled MAD from the median, some
-% std devs from the mean, some IQ ranges above/below upper lower quartiles,
+% prform outlier detection using some scaled MAD from the median, some std
+% devs from the mean, some IQ ranges above/below upper lower quartiles,
 % using the grubb's test, or using a generalized extreme studentized
 % deviate test for outliers. Set this to 'fmcd, 'ogk', or 'olivehawkins' to
 % use different methods for estimating robust covariance to detect outliers
 % (robustcov.m). Use 'iforest' to generate an isolation forest to identify
 % outliers. Use 'ocsvm' to use one class svm to identify outliers. Default:
 % median.
-% 
+%
 % 'outlierReps' : some outlier detection methods are stochastic and
 % repeating them can be helpful (ocsvm and iforest). This determines the
 % number of times that they will be repeated. Default: 1 (i.e., no
@@ -533,16 +542,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % Internal notes ----------------------------------------------------------
 % -------------------------------------------------------------------------
-% 1) make lasso return weights for lambda that was chosen as scores
-% 2) verbose warnings, displays are not consistent across algorithms
-% 3) need more verbose options and feedback
-% 4) fix RF defaults and just warn about computational time (maybe based on
-% # of features)
-% 5) documentation details lots of recommendations where settings  *should*
-% be adapted based on other settings being changed away from defaults.
-% Check if user changed these and update them yourself if they are
-% obviously terrible, otherwise just throw a warning. 
-% 6) NCA could have lambdas defined inside sampling scheme...
+% 1) make lasso return weights for lambda that was chosen as scores 2)
+% verbose warnings, displays are not consistent across algorithms 3) need
+% more verbose options and feedback 4) fix RF defaults and just warn about
+% computational time (maybe based on
+% # of features) 5) documentation details lots of recommendations where
+% settings  *should* be adapted based on other settings being changed away
+% from defaults. Check if user changed these and update them yourself if
+% they are obviously terrible, otherwise just throw a warning. 6) NCA could
+% have lambdas defined inside sampling scheme...
 %
 % Alex Teghipco // alex.teghipco@sc.edu // July 13, 2022
 
@@ -550,7 +558,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],...
     'lam',[],'lamInside','during','lamAEN',[],'lamRatio',1e-4,'adaptOutside',...
     false,'lmn',[],'lmx',[],'ln',1000,'prop',0.5,'rep',50,'stnd',true,'numFalsePos',...
-    [],'fwer',[],'thresh',0.9,'parallel',false,'adaptive',false,...
+    [],'fdr',[],'thresh',0.9,'parallel',false,'adaptive',false,...
     'outlier','none','outlierPrepro','none','outlierPreproNonconsec',true,...
     'propOutliers',0.1,'outlierPreproP',0.05,'outlierPreproN',5000,...
     'outlierReps',1,'outlierRepThresh',1,'outlierMethod','median',...
@@ -568,10 +576,12 @@ for pair = reshape(vleft,2,[]) %pair is {propName;propValue}
     inpName = pair{1}; % make case insensitive by using lower() here but this can be buggy
     if any(strcmpi(inpName,optionNames)) % check if arg pair matches default
         def = options.(inpName); % default argument
-        %if ~isempty(pair{2}) % if passed in argument isn't empty, then write that in as the option
-            options.(inpName) = pair{2};
+        %if ~isempty(pair{2}) % if passed in argument isn't empty, then
+        %write that in as the option
+        options.(inpName) = pair{2};
         %else
-        %    options.(inpName) = def; % otherwise use the default values for the option
+        %    options.(inpName) = def; % otherwise use the default values
+        %    for the option
         %end
     else
         error('%s is not a valid argument',inpName)
@@ -615,8 +625,8 @@ if strcmpi(options.selAlgo,'ridge')
 end
 
 % fix numFalsePos
-if isempty(options.numFalsePos) && isempty(options.fwer)
-   options.numFalsePos = 1;
+if isempty(options.numFalsePos) && isempty(options.fdr)
+    options.numFalsePos = 1;
 end
 
 % fix size of lam
@@ -630,8 +640,8 @@ if options.propN && options.prop >= 1
     tmpl = options.prop;
     options.prop = options.prop/size(X,1);
     if options.verbose
-       disp('Changing subsampling N to proportion...')
-       disp(['To achieve N of ' num2str(tmp) ' in subsample, proportion must be: ' num2str(options.prop)]);
+        disp('Changing subsampling N to proportion...')
+        disp(['To achieve N of ' num2str(tmp) ' in subsample, proportion must be: ' num2str(options.prop)]);
     end
 end
 
@@ -642,20 +652,20 @@ if strcmpi(options.selAlgo,'en') && ~isempty(options.maxVars) && ~options.fixMax
 end
 if (strcmpi(options.selAlgo,'nca') || strcmpi(options.selAlgo,'corr') || strcmpi(options.selAlgo,'robustLR')) && ~isempty(options.maxVars) && ~options.filter
     options.filter = true;
-     warning('When passing in a maxVars with correlation or robust linear regression, we assume you want to use both as a filter');
+    warning('When passing in a maxVars with correlation or robust linear regression, we assume you want to use both as a filter');
 end
 
-% warning about threshold if it is known--cannot be below 0.5 if you
-% want to do fwer (p or num false positives)
-if ~isempty(options.thresh) && options.thresh < 0.5 && (~isempty(options.numFalsePos) || ~isempty(options.fwer))
+% warning about threshold if it is known--cannot be below 0.5 if you want
+% to do fdr-ish (p or num false positives)
+if ~isempty(options.thresh) && options.thresh < 0.5 && (~isempty(options.numFalsePos) || ~isempty(options.fdr))
     warning('You have asked to estimate some false positives in the stable set, but your threshold is below 0.5. We can only estimate false positives when thresh is > 0.5. Fixing thresh to 0.501.')
     options.thresh = 0.501;
 end
 
-% Check for missing fwer and/or numFalsePos
-if (isempty(options.numFalsePos) && isempty(options.fwer)) && (isempty(options.thresh) || isempty(options.maxVars))
+% Check for missing fdr and/or numFalsePos
+if (isempty(options.numFalsePos) && isempty(options.fdr)) && (isempty(options.thresh) || isempty(options.maxVars))
     options.numFalsePos = 1;
-    warning('You did not set thresholds for number of false positives or FWER. Typically this is not a problem, but you also did not set BOTH thresh and maxVars. Setting number of false positives to 1 so that it is possible to get these variables.')
+    warning('You did not set thresholds for number of false positives or FDR. Typically this is not a problem, but you also did not set BOTH thresh and maxVars. Setting number of false positives to 1 so that it is possible to get these variables.')
 end
 
 % get number of features (avg) our regularization parameters should produce
@@ -665,64 +675,65 @@ if isempty(options.thresh) && isempty(options.maxVars) && (options.fixMax && str
         options.maxVars = round(sqrt(0.8*options.numFalsePos*size(X,2)));
         disp(['Estimated maxVars will be: ' num2str(options.maxVars) ' based on a threshold of less than ' num2str(options.numFalsePos) ' false positives'])
     else
-        warning('Estimating maxVars that will produce <1 false positive. If there is a FWER threshold, it will be applied when estimating probability threshold for defining stable set..')
+        warning('Estimating maxVars that will produce <1 false positive. If there is an FDR-like threshold set, it will be applied when estimating probability threshold for defining stable set..')
         options.maxVars = round(sqrt(0.8*size(X,2)));
     end
 end
 
-% check that there is not BOTH fwer and numFalsePos
-if ~isempty(options.numFalsePos) && ~isempty(options.fwer)
+% check that there is not BOTH fdr and numFalsePos
+if ~isempty(options.numFalsePos) && ~isempty(options.fdr)
     options.numFalsePos = [];
-    warning('You cannot specify both FWER threshold and a threshold for number of false positives. Keeping FWER.')
+    warning('You cannot specify both an FDR-like threshold and a threshold for number of false positives. Keeping FDR.')
 end
 
 % get number of features (avg) our regularization parameters should produce
 % if user-specified threshold exists
 if isempty(options.maxVars) && ~isempty(options.thresh)
-   if ~isempty(options.fwer)
-       tmpii = linspace(0.0001,size(X,2)/3,100000);
-        disp(['Finding number of false positives for which FWER should be : ' num2str(options.fwer)])
+    if ~isempty(options.fdr)
+        tmpii = linspace(0.0001,size(X,2)/3,100000);
+        disp(['Finding number of false positives for which FDR-like p-value should be : ' num2str(options.fdr)])
         for i = 1:length(tmpii)
             n1 = sqrt(size(X,2)*(tmpii(i)/(1/((2*options.thresh)-1))));
             tmpi(i,1) = ((1/((2*options.thresh)-1))*((n1.^2)/size(X,2)))/n1;
         end
-        id = find(tmpi < options.fwer,1,'last');
+        id = find(tmpi < options.fdr,1,'last');
         if ~isempty(id)
             options.numFalsePos = tmpii(id);
         else
             options.numFalsePos = NaN;
-            warning('It was not possible to find a number of false positives that would ensure selected fwer. numFalsePos will be set to 1 to estimate maxVars.')
+            warning('It was not possible to find a number of false positives that would ensure selected fdr-like threshold. numFalsePos will be set to 1 to estimate maxVars.')
         end
-   end
-   if ~isnan(options.numFalsePos)
-       n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
-       if n1 > 1
-           options.maxVars = round(n1);
-       else
-           options.maxVars = round(n1+1)-1;
-       end
-   else
+    end
+    if ~isnan(options.numFalsePos)
+        n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
+        if n1 > 1
+            options.maxVars = round(n1);
+        else
+            options.maxVars = round(n1+1)-1;
+        end
+    else
         options.maxVars = round(sqrt(0.8*size(X,2)));
-   end
-   if options.maxVars == 0
-       error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives (or fwer) you are comfortable with, or decrease the threshold.')
-   else
-       disp(['Average # of features selected by method (maxVars) should be : ' num2str(options.maxVars) '. This will ensure ' num2str(options.numFalsePos) ' or fewer false positives'])
-   end
+    end
+    if options.maxVars == 0
+        error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives (or fdr-like thresh) you are comfortable with, or decrease the threshold.')
+    else
+        disp(['Average # of features selected by method (maxVars) should be : ' num2str(options.maxVars) '. This will ensure ' num2str(options.numFalsePos) ' or fewer false positives'])
+    end
 end
 
 % warn about correction
 if options.verbose && options.prop ~= 0.5
-    warning('Having a sampling proportion other than 0.5 may break estimation of the number of false positives (incl. fwer option). This may be okay to do in some cases (see original stability selection paper).')
+    warning('Having a sampling proportion other than 0.5 may break estimation of the number of false positives (incl. fdr option). This may be okay to do in some cases (see original stability selection paper).')
 end
 
 % estimate # variables we SHOULD force algorithm to select...
-%if ~isempty(options.maxVars) && ~isempty(options.thresh) && 
+%if ~isempty(options.maxVars) && ~isempty(options.thresh) &&
 
 % if isempty(options.maxVars) && ~isempty(options.thresh)
-%     options.maxVars = round(sqrt(0.8*options.corr*size(X,2)));
-%     if options.verbose
-%         disp(['The number of variables you should force your selection algorithm to choose is: ' num2str(options.maxVars)])
+%     options.maxVars = round(sqrt(0.8*options.corr*size(X,2))); if
+%     options.verbose
+%         disp(['The number of variables you should force your selection
+%         algorithm to choose is: ' num2str(options.maxVars)])
 %     end
 % end
 %(1/((2*options.thresh)-1))*((options.maxVars.^2)/size(X,2))
@@ -828,9 +839,9 @@ if isempty(options.lam) && strcmpi(options.selAlgo,'nca')
     elseif strcmpi(options.lst,'log')
         options.lam = exp(linspace(log(options.lmn),log(options.lmx),options.ln))*std(y)/length(y);
     end
-end   
+end
 
-% define lambdas for GPR        
+% define lambdas for GPR
 if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(options.selAlgo,'gpr')
     if isempty(options.lmn)
         options.lmn = 1e-2*std(y)/3;
@@ -878,7 +889,7 @@ end
 
 % initialize outputs...occasionally these are undefined depending on user
 % args
-scores = []; 
+scores = [];
 lam = [];
 if strcmpi(options.selAlgo,'en')
     empMaxVars = repmat(NaN,length(options.alpha),1);
@@ -886,9 +897,9 @@ else
     empMaxVars = options.maxVars;
 end
 
-% preallocate subsample indices...this is in case you want to get
-% lamba min/max using the subsamples (i.e., we get one series of l but
-% tailored to the data)
+% preallocate subsample indices...this is in case you want to get lamba
+% min/max using the subsamples (i.e., we get one series of l but tailored
+% to the data)
 if options.verbose
     disp('Preallocating subsample indices')
 end
@@ -920,7 +931,7 @@ for j = 1:options.rep
         elseif strcmpi(options.samType,'bootstrap')
             s = 1:length(y);
             if options.compPars && j ~= 1
-               s = setdiff(s,ctr{j-1});
+                s = setdiff(s,ctr{j-1});
             end
             ctr{j} = s(ceil(length(s)*rand(1,n)));
         end
@@ -992,7 +1003,9 @@ elseif strcmpi(options.selAlgo,'nca') || strcmpi(options.selAlgo,'gpr')
 elseif strcmpi(options.selAlgo,'relieff')
     fsc = zeros(size(X,2),length(options.rK),length(options.rE)); % features x knn x sigma
 elseif strcmpi(options.selAlgo,'rf')
-    %fsc = zeros(size(X,2),length(options.lamRF),length(options.mls),length(options.mns)); % features x lamRF x mls x mns
+    %fsc =
+    %zeros(size(X,2),length(options.lamRF),length(options.mls),length(options.mns));
+    %% features x lamRF x mls x mns
     fsc = zeros(size(X,2),length(options.lamRF)); % features x lamRF x mls x mns
 end
 if options.verbose
@@ -1024,8 +1037,8 @@ for i = 1:options.rep
             si(oid{i}) = [];
         end
         % check if you want to adjust subsampling prop. to account for #
-        % outliers removed...prop will be adjusted to keep training set same
-        % size as if the prop selected was applied to all data...
+        % outliers removed...prop will be adjusted to keep training set
+        % same size as if the prop selected was applied to all data...
         if options.verbose
             if strcmpi(options.outlierDir,'rows')
                 disp(['Removed ' num2str(length(oid{i})) ' row (samples) outliers from data (' num2str((length(oid{i})/size(Xtmp,2))*100) '%) before subsampling'])
@@ -1042,95 +1055,104 @@ for i = 1:options.rep
     
     % start EN...
     if strcmpi(options.selAlgo,'EN')
-       % copy in lambda values precalculated...
-       lam = options.lam;
-       
-       % run EN to get weights for adaptive lasso
-       if options.adaptive
-          tmpid = setdiff([1:length(y)],ctr{i});
-          [Xtmp,~,~,~] = alasso(Xtmp,Ytmp,X(tmpid,:),y(tmpid),1e-300,stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);  
-          stnd = false; % fix stnd for lasso OF weights
-       end
-
-       % now do lasso for each alpha (within each we pass in our lams)
-       for kk = 1:length(options.alpha)
-           if strcmpi(options.lamInside,'during')
-               [~,~,lam(:,kk)] = defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],[],options.lamRatio,options.lst,options.ln,options.logDirPref);
-           end
-           if options.parallel
-               if options.fixMax
-                   [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
-               else
-                   [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'Options',statset('UseParallel',true));
-               end
-%                if sum(lsFit.DF == 0) == length(lam(:,kk)) && strcmpi(options.lamInside,'during') % add zero lambda if we are still not getting any variables...
-%                    [~,~,lam(:,kk)] = defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
-%                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
-%                end
-           else
-               if options.fixMax
-                   [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
-               else
-                   [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd);
-               end 
-% if sum(lsFit.DF == 0) == length(lam(:,kk)) && strcmpi(options.lamInside,'during')
-%                    [~,~,lam(:,kk)] = defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
-%                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
-%                end
-           end
-           empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF),1)'])],'omitnan');
-
-           if options.verbose
-               disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
-           end
-
-           % we need to adjust lam in cases where lasso output excludes a
-           % certain lam we passed in (i.e., l is too low).
-           if ~isempty(lsFit.Lambda)
-               [~, adj] = min(abs(lam(:,kk) - lsFit.Lambda(1))); adj = adj-1;
-               if options.verbose
-                   disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
-               end
-
-               for jj = 1:size(lsB,2)
-                   %                    if lsFit.DF(jj) > options.maxVars
-                   %                        [~,id] = maxk(lsB(:,jj),options.maxVars);
-                   %                    else
-                   %                        id = find(lsB(:,jj)~=0);
-                   %                    end
-                   id = find(lsB(:,jj)~=0);
-                   if ~isempty(id)
-                       fsc(si(id),jj+adj,kk) = fsc(si(id),jj+adj,kk)+1;
-                   end
-               end
-           else
-               %adj = 0;
-               warning('No lambdas returned any elastic net coefficients in this run. It is difficult to select a series of lambda values that fit all of your data. Try defining lambda series *outside* the subsampling procedure (if you are not doing so already).')
-           end
-           
-           % now count selected feats
-%            if strcmpi(options.outlier,'none') || (strcmpi(options.outlier,'inside') && strcmpi(options.outlierDir,'rows'))
-%               id = find(lsB(:,1)~=0);
-%               if ~isempty(id)
-%                   fsc(id,adj+1,kk) = fsc(id,adj+1,kk)+1;
-%               end
-%                %                for jj = 1:size(lsB,2)
-% %                    if ~isempty(lsB)
-% %                        id = find(lsB(:,jj)~=0);
-% %                        fsc(id,jj+adj,kk) = fsc(id,jj+adj,kk)+1;
-% %                    end
-% %                end
-%            else
-%                s = 1:size(X,2);
-%                s(oid{i}) = [];
-%                for jj = 1:size(lsB,2)
-%                    if ~isempty(lsB)
-%                        id = find(lsB(:,jj)~=0);
-%                        fsc(s(id),jj+adj,kk) = fsc(s(id),jj+adj,kk)+1;
-%                    end
-%                end
-%            end
-       end
+        % copy in lambda values precalculated...
+        lam = options.lam;
+        
+        % run EN to get weights for adaptive lasso
+        if options.adaptive
+            tmpid = setdiff([1:length(y)],ctr{i});
+            [Xtmp,~,~,~] = alasso(Xtmp,Ytmp,X(tmpid,:),y(tmpid),1e-300,stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+            stnd = false; % fix stnd for lasso OF weights
+        end
+        
+        % now do lasso for each alpha (within each we pass in our lams)
+        for kk = 1:length(options.alpha)
+            if strcmpi(options.lamInside,'during')
+                [~,~,lam(:,kk)] = defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],[],options.lamRatio,options.lst,options.ln,options.logDirPref);
+            end
+            if options.parallel
+                if options.fixMax
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
+                else
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'Options',statset('UseParallel',true));
+                end
+                %                if sum(lsFit.DF == 0) == length(lam(:,kk))
+                %                && strcmpi(options.lamInside,'during') %
+                %                add zero lambda if we are still not
+                %                getting any variables...
+                %                    [~,~,lam(:,kk)] =
+                %                    defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
+                %                    [lsB,lsFit] =
+                %                    lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
+                %                end
+            else
+                if options.fixMax
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
+                else
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd);
+                end
+                % if sum(lsFit.DF == 0) == length(lam(:,kk)) &&
+                % strcmpi(options.lamInside,'during')
+                %                    [~,~,lam(:,kk)] =
+                %                    defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
+                %                    [lsB,lsFit] =
+                %                    lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
+                %                end
+            end
+            empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF),1)'])],'omitnan');
+            
+            if options.verbose
+                disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
+            end
+            
+            % we need to adjust lam in cases where lasso output excludes a
+            % certain lam we passed in (i.e., l is too low).
+            if ~isempty(lsFit.Lambda)
+                [~, adj] = min(abs(lam(:,kk) - lsFit.Lambda(1))); adj = adj-1;
+                if options.verbose
+                    disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
+                end
+                
+                for jj = 1:size(lsB,2)
+                    %                    if lsFit.DF(jj) > options.maxVars
+                    %                        [~,id] =
+                    %                        maxk(lsB(:,jj),options.maxVars);
+                    %                    else
+                    %                        id = find(lsB(:,jj)~=0);
+                    %                    end
+                    id = find(lsB(:,jj)~=0);
+                    if ~isempty(id)
+                        fsc(si(id),jj+adj,kk) = fsc(si(id),jj+adj,kk)+1;
+                    end
+                end
+            else
+                %adj = 0;
+                warning('No lambdas returned any elastic net coefficients in this run. It is difficult to select a series of lambda values that fit all of your data. Try defining lambda series *outside* the subsampling procedure (if you are not doing so already).')
+            end
+            
+            % now count selected feats
+            %            if strcmpi(options.outlier,'none') ||
+            %            (strcmpi(options.outlier,'inside') &&
+            %            strcmpi(options.outlierDir,'rows'))
+            %               id = find(lsB(:,1)~=0); if ~isempty(id)
+            %                   fsc(id,adj+1,kk) = fsc(id,adj+1,kk)+1;
+            %               end
+            %                %                for jj = 1:size(lsB,2)
+            % %                    if ~isempty(lsB) %
+            % id = find(lsB(:,jj)~=0); %
+            % fsc(id,jj+adj,kk) = fsc(id,jj+adj,kk)+1; %
+            % end %                end
+            %            else
+            %                s = 1:size(X,2); s(oid{i}) = []; for jj =
+            %                1:size(lsB,2)
+            %                    if ~isempty(lsB)
+            %                        id = find(lsB(:,jj)~=0);
+            %                        fsc(s(id),jj+adj,kk) =
+            %                        fsc(s(id),jj+adj,kk)+1;
+            %                    end
+            %                end
+            %            end
+        end
     end
     
     % start linear regression...
@@ -1147,7 +1169,7 @@ for i = 1:options.rep
             empMaxVars = mean([empMaxVars mean(length(id))],'omitnan');
         end
     end
-
+    
     if strcmpi(options.selAlgo,'robustLR')
         if ~options.filter
             id = [];
@@ -1207,13 +1229,15 @@ for i = 1:options.rep
             if ~options.parallel
                 for kk = 1:length(options.rE)
                     [id{jj,kk},scores{jj,kk}] = relieff(Xtmp,Ytmp,options.rK(jj),'sigma',options.rE(kk),'method','regression');
-                    %fsc(id(1:options.maxVars),jj,kk) = fsc(id(1:options.maxVars),jj,kk)+1;
+                    %fsc(id(1:options.maxVars),jj,kk) =
+                    %fsc(id(1:options.maxVars),jj,kk)+1;
                 end
             else
                 scores = cell(length(options.rK),length(options.rE));
                 parfor kk = 1:length(options.rE)
                     [id{jj,kk},scores{jj,kk}] = relieff(Xtmp,Ytmp,options.rK(jj),'sigma',options.rE(kk),'method','regression');
-                    %fsc(id(1:options.maxVars),jj,kk) = fsc(id(1:options.maxVars),jj,kk)+1;
+                    %fsc(id(1:options.maxVars),jj,kk) =
+                    %fsc(id(1:options.maxVars),jj,kk)+1;
                 end
             end
         end
@@ -1280,22 +1304,28 @@ for i = 1:options.rep
     if strcmpi(options.selAlgo,'rf')
         lam = options.lamRF;
         for jj = 1:length(lam)
-%             for kk = 1:length(options.mls)
-%                 for ll = 1:length(options.mns)
-%                     t = templateTree('NumVariablesToSample','all','MaxNumSplits',options.mns(ll),'MinLeafSize',options.mls(kk),...
-%                         'PredictorSelection','interaction-curvature','Surrogate','on');
-%                     mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-%                     scores{jj,kk,ll} = oobPermutedPredictorImportance(mdl);
-%                     [~,id{jj,kk,ll}] = sort(scores{jj,kk,ll},'descend');
-%                     fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll) = fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll)+1;
-%                 end
-%             end
-                    t = templateTree('NumVariablesToSample','all',...
-                        'PredictorSelection','interaction-curvature','Surrogate','on','MaxNumSplits',3,'MinLeafSize',6);
-                    mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-                    scores{jj} = oobPermutedPredictorImportance(mdl);
-                    [~,id{jj}] = sort(scores{jj},'descend');
-                    fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
+            %             for kk = 1:length(options.mls)
+            %                 for ll = 1:length(options.mns)
+            %                     t =
+            %                     templateTree('NumVariablesToSample','all','MaxNumSplits',options.mns(ll),'MinLeafSize',options.mls(kk),...
+            %                         'PredictorSelection','interaction-curvature','Surrogate','on');
+            %                     mdl =
+            %                     fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
+            %                     scores{jj,kk,ll} =
+            %                     oobPermutedPredictorImportance(mdl);
+            %                     [~,id{jj,kk,ll}] =
+            %                     sort(scores{jj,kk,ll},'descend');
+            %                     fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll)
+            %                     =
+            %                     fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll)+1;
+            %                 end
+            %             end
+            t = templateTree('NumVariablesToSample','all',...
+                'PredictorSelection','interaction-curvature','Surrogate','on','MaxNumSplits',3,'MinLeafSize',6);
+            mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
+            scores{jj} = oobPermutedPredictorImportance(mdl);
+            [~,id{jj}] = sort(scores{jj},'descend');
+            fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
         end
     end
 end
@@ -1313,24 +1343,26 @@ end
 % get probability threshold for stable set if it was not passed in...
 usrt = true;
 if isempty(options.thresh)
-    if ~isempty(options.fwer)
+    if ~isempty(options.fdr)
         tmpii = linspace(0.0001,size(X,2)/3,100000);
-        disp(['Finding number of false positives that should give FWER of : ' num2str(options.fwer)])
+        disp(['Finding number of false positives that should give FDR-like p-value of : ' num2str(options.fdr)])
         for i = 1:length(tmpii)
             n1 = ((((empMaxVars.^2)/size(X,2))/tmpii(i))+1)/2;
             tmpi(i,1) = (1/((2*n1)-1))*((empMaxVars.^2)/size(X,2))/empMaxVars;
         end
-        id = find(tmpi < options.fwer,1,'last');
+        id = find(tmpi < options.fdr,1,'last');
         if ~isempty(id)
             options.numFalsePos = tmpii(id);
         else
             options.numFalsePos = NaN;
-             warning('It was not possible to find a number of false positives that would ensure selected fwer. Thresh will be set to 1.')
+            warning('It was not possible to find a number of false positives that would ensure selected FDR-like p-value. Thresh will be set to 1.')
         end
         disp(['Found a good number of false positives : ' num2str(options.numFalsePos)])
     end
     if ~isnan(options.numFalsePos)
         options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+        %options.thresh =
+        %((((empMaxVars.^2)/options.numFalsePos)/size(X,2))+1)/2;
     else
         options.thresh = 1;
     end
@@ -1340,15 +1372,17 @@ end
 
 if options.thresh > 1 && usrt % if threshold is not a proportion we assume you want a fixed set of selected features = threshold
     [~,fk] = maxk(fscmx,round(options.thresh));
-    warning('Your threshold appears to be > 1 so we are assuming you want to select a fixed number of features as indicated by thresh. FWER no longer applies!!')
+    warning('Your threshold appears to be > 1 so we are assuming you want to select a fixed number of features as indicated by thresh. FDR-like p-value no longer applies!!')
 else
     fk = find(fscmx > options.thresh);
 end
 
-% show effective FWER
+% show effective FDR-like p-value
 ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
-disp(['Effective FWER p-value is: ' num2str(ep) '. This may be slightly higher than your selected fwer due to rounding. Discrepancy may be higher when maxVars is lower.'])
-disp(['Number of features that survived effective FWER p-value: ' num2str(length(fk))])
+disp(['Effective FDR-like p-value is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
+disp(['Number of features that survived effective FDR-like p-value: ' num2str(length(fk))])
+disp(['Effective per-comparison error rate p-value is: ' num2str(options.numFalsePos/size(X,2))])
+disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos)])
 
 % output
 maxVars = options.maxVars;

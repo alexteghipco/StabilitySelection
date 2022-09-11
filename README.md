@@ -1,7 +1,7 @@
 # StabilitySelection
 Perform stability selection in matlab using a variety of feature selection methods. You can also perform some outlier detection either inside the resampling scheme, or prior to resampling. 
 
-Stability selection identifies a stable set of features by repeatedly resampling your data and performing feature selection each time using some method (traditionally an elastic net using lots of different regularization parameters). It can be folded into a cross-validation scheme, and provides a way to try to implement error control while selecting features. 
+Stability selection identifies a stable set of features by repeatedly resampling your data and performing feature selection each time using some method (traditionally LASSO using lots of different regularization parameters). It can be folded into a cross-validation scheme, and provides a way to try to implement error control while selecting features. 
 
 Refer to stabSel.m for documentation on both the code and the stability selection method. Tutorial.mlx contains several thorough examples for using stabSel to shrink your feature space, and to discover features that significantly predict some variable you are interested in.
 

@@ -19,11 +19,11 @@ end
 % of features to zero
 id = find(fitin.DF ~= max(fitin.DF));
 if isempty(Xtest) && isempty(ytest)
-    if strcmpi(regp,'smallest') % there could be a range of values that satisfy this criterion so we can get the largest lamda that does this, the smallest lambda that does this, or the middle lambda in the set.
-        id = find(fitin.DF == mv,1,'first'); % smallest regularization penalty that shrinks least number of features to zero
+    if strcmpi(regp,'smallest') 
+        id = find(fitin.DF == mv,1,'first');
     elseif strcmpi(regp,'largest')
-        id = find(fitin.DF == mv,1,'last'); % largest regularization penalty that shrinks least number of features to zero
-    elseif strcmpi(regp,'middle') % middle regularization penalty that shrinks least number of features to zero
+        id = find(fitin.DF == mv,1,'last');
+    elseif strcmpi(regp,'middle') 
         id1 = find(fitin.DF == mv,1,'first');
         id2 = find(fitin.DF == mv,1,'last');
         id = round((id1+id2)/2);
@@ -32,7 +32,7 @@ else
     if ~parallel
         for jj = 1:length(id)
             yh = Xtest * bin(:,id(jj)) + fitin.Intercept(id(jj));
-            mse(jj) = mean((y(tmpid)-yh).^2);
+            mse(jj) = mean((ytest-yh).^2);
         end
     else
         parfor jj = 1:length(id)
@@ -45,7 +45,13 @@ else
 end
 
 w = bin(:,id);
-w = 1./abs(w).^(gam); % gam *can* vary but see original adaptive EN paper
+% Exclude zero weights
+w(w == 0) = [];
+X(:, w == 0) = [];
+
+w = 1./abs(w).^(gam);
 id = find(w == inf);
 w(id) = 1e-50;
-X = X.*w';
+
+% Apply weights to columns
+X = X .* w';

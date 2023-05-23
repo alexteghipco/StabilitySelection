@@ -1,4 +1,4 @@
-function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos] = stabSel(X,y,varargin)
+function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos,alLScores] = stabSelNew(X,y,varargin)
 %
 % Identify a stable set of features in your data using the framework of
 % stability selection.
@@ -9,7 +9,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % What do I need to provide stabSel:  -------------------------------------
 % -------------------------------------------------------------------------
-% X: an n x p matrix of predictors y: an n x 1 vector of responses
+% X: an n x p matrix of p predictors
+% y: an n x m vector of m response variables (can be continuous for
+% regression or categorical for classification)
 %
 % Optional arguments can be supplied as well, like so: %
 % stabSel(X,y,'maxVars',25,'stnd',false)
@@ -17,7 +19,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % What does stabSel do? ---------------------------------------------------
 % -------------------------------------------------------------------------
-% Use one of 13 feature selection methods (see 'selAlgo'; default is an
+% Use one of 20+ feature selection methods (see 'selAlgo'; default is an
 % elastic net) within the framework of stability selection to identify a
 % "stable" set of features (see output 'fk') in input matrix X. The stable
 % set of features contains those features that have a higher probability of
@@ -26,7 +28,12 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % dataset (see 'samType' for resampling options). The feature selection
 % method selects the top N features in the dataset that are predictive of
 % your response variable, so the stable set of features can be thought of
-% as the columns of X that more consistently predict y.
+% as the columns of X that more consistently predict y. The variable y can
+% contain multiple tasks (i.e., columns). By default, stabSel will average
+% stability values computed independently for each task. But you can also
+% stack your tasks. Or you can use some algorithms made specifically for
+% multi-task learning (e.g., PLS, a basic implementation of group lasso,
+% and BLANK).
 %
 % The two most critical parameters in stability selection are the q
 % variables that a feature selection method selects on average (see
@@ -125,8 +132,10 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % GPR, RF. These will map onto a dimension of fsc (different for different
 % selection methods)
 %
-% 'scores' : returns weighting of features for linear
-% regression/correlation, relieff, mrmr, nca.
+% 'scores' : returns weighting of features by selected algoirthm that is
+% then passed on to stability selection. If you have multiple tasks
+% (columns in y) and you do not stack your tasks, this will contain the
+% average feature weightings across all tasks. 
 %
 % 'oid' : rows of X that are determined to be outliers.
 %
@@ -156,9 +165,17 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % in the stable set. Corresponds to the per familywise error rate, which is
 % more stringent than FWER.
 %
+% 'allScores' : if keepScores is set to true, allScores will contain scores
+% (feature rankings submitted to stability selection) for every task
+% (i.e., column in y).
+%
 %% ------------------------------------------------------------------------
 % General optional arguments (apply to all selection methods) -------------
 % -------------------------------------------------------------------------
+% 'stack' : if set to true and you have multiple columns/tasks in y, then
+% we will stack tasks together and your chosen feature ranking algorithm
+% will consider all tasks together.
+%
 % 'samType' : determines the resampling scheme. Set to 'subsample' to take
 % subsamples of your data as per the original stability selection paper
 % (see section above). Set to 'bootstrap' to take bootstraps of your data.
@@ -224,6 +241,13 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % select and fwer/false positives will no longer apply. Default: 0.9.
 % Default: [].
 %
+% 'keepScores' : if set to true, stabSel will retain feature rankings
+% submitted to stability selection for all tasks in y (i.e., columns). 
+%
+% 'problem' : specify whether your problem is a regression problem
+% ('regression') or classification ('classification). Some algorithms can
+% be used for both. Default: 'regression'.
+%
 % 'selAlgo' : sets the algorithm for selecting features. This may be 'EN'
 % for an elastic net (see lasso.m for more detail), 'lasso' for lasso
 % regression (see lasso.m for more detail), 'ridge for ridge regression
@@ -236,7 +260,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % information (see fsmrmr.m for more detail), 'releiff' for the
 % ReliefF/RReliefF algorithm that relies on nearest neighbor search (see
 % relieff.m for more detail), 'GPR' for a gaussian process model (see
-% fitrgp.m for more detail), and 'RF' for a random forest (see
+% fitrgp.m for more detail), and 'ens' for a random forest (see
 % fitrensemble.m). Note, that an additional argument can be used to adjust
 % 'EN' or 'lasso' to be adaptive (in both cases, coefficients from ridge
 % regression are used to weight your data before applying lasso or an
@@ -244,7 +268,16 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % On the adaptive elastic-net with a diverging number of parameters. Annals
 % of statistics, 37(4), 1733.). Note, some of these options require more
 % recent versions of matlab, but stabSel will check this for you. Default:
-% 'EN'.
+% 'EN'. For mutli-task regression 'pls' can be used as well 'groupLasso'.
+% Group lasso is a very basic implementation and may not work well for all
+% data. It cannot be used with the 'adaptive' option. 
+%
+% The following selAlgo options can only be used for regression:
+% 'lasso','en','corr','robustLR','ftest','relieff','gpr','pls'.
+%
+% The following selAlgo options can only be used for classification:
+% 'ttest','wilcoxon','entropy','roc' or 'bhattacharyya'. All of these
+% methods are used as filters.
 %
 % 'stnd' : standardize X (z-score cols) if set to true, otherwise set to
 % false. When selAlgo is 'EN', 'lasso', 'ridge', or 'GPR' stnd is passed
@@ -261,7 +294,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 %% ------------------------------------------------------------------------
 % ------- Optional arguments that apply to > 1 selection algorithm --------
-% -------------- (elastic net, lasso, ridge, nca, gpr, rf) ----------------
+% -------------- (elastic net, lasso, ridge, nca, gpr, ens) ----------------
 % -------------------------------------------------------------------------
 % 'lam' : user-specified lambda (regularization parameter) sequence to be
 % used for elastic net, lasso, ridge, GPR, or NCA. When this is empty
@@ -287,18 +320,21 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % computed BEFORE subsampling, ACROSS subsamples or DURING subsampling
 % (applies to EN/lasso/ridge and GPR). Set to 'during' to compute lambda
 % values unique to each subsample. This only works for lasso, en, and ridge
-% regression. It is not recommended unless stabSel returns warnings about
-% being unable to select good lambda values to fit your subsamples
-% (specifically when lamInside is set to either of the other two options).
-% Having the same lambda values across subsamples is arguably preferable
-% for interpretation because we take the max 'stability' of a feature
-% across regularization parameters. Set this option to 'before' in order to
-% compute one set of lambda values using your entire input data X and y.
-% Set this option to 'across' to first define unique lambda sequences for
-% each subsample (as would be done if you set this to 'during'), then
-% compute a single lambda sequence using the smallest and largest lambda
-% values across subsamples. If using EN, all of these options will be
-% executed independently for each alpha value. Default: false.
+% regression. It is especially recommendeded if stabSel returns warnings
+% about being unable to select good lambda values to fit your subsamples
+% (i.e., when lamInside is set to either of the other two options). Having
+% different lambda values for each subsample introduces some variance but
+% ensures random partitioning noise does not impact stability (i.e., when
+% defining lambda values using all the data prior to subsampling).
+% Tailoring lambda to subsamples is also more efficient and avoids
+% excessively large or small lambdas that always result in full or sparse
+% models. If this approach does not agree with you and you are getting many
+% warnings about bad fitting lambda values, a happy middle ground is to
+% define lambdas across subsamples. This is where we preallocate the
+% subsamples, define lambdas tailored to each and use the min and max
+% across those lambdas to define a consistent lambda range that will be fit
+% to all subsamples. If using EN, all of these options will be executed
+% independently for each alpha value. Default: during.
 %
 % 'lmx' : max lambda value to use in lambda sequence for elastic net, lasso
 %, ridge, NCA, and GPR. For elastic net, lasso and ridge, leaving this
@@ -321,8 +357,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'ln' : number of lambda values to include in an automatically generated
 % lambda sequence. This applies to elastic net, lasso, ridge, NCA, GPR, and
-% RF (note RF lambda values are passed in currently as 'lamRF'; see below).
-% Default: 100.
+% ens. Default: 100.
 %
 % 'lst' : determines how values will be spaced between lmn and lmx to
 % automatically produce a lambda sequence. Set to 'linear' or 'log'.
@@ -440,20 +475,19 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % prediction, and subset of regressors approximation for the fit method.
 %
 %% ------------------------------------------------------------------------
-% ---------------------- Optional arguments for RF ------------------------
+% ---------------------- Optional arguments for Ens -----------------------
 % -------------------------------------------------------------------------
-% 'lamRF' : this determines the number of learning cycles to use for the
-% random forest. Can be an n x 1 sequence. More options for RF are
-% available but not currently implemented due to computational costs
-% required to execute. To make them available, uncomment relevant code. You
-% can then pass in a learning rate using optional argument 'lr'. Max. #
-% splits using optional argument 'mns' and min leaf size using optional
-% argument 'mls'. In these 3 cases, you should pass in a sequence of values
-% that is n x 1 in size. Default values for lamRF are 10 linearly spaced
-% values between 10 and 500. Default values for min leaf size are
-% round(linspace(1,max(2,floor(size(X,2)/2)),15)). Default values for max #
-% splits are round(linspace(1,size(X,2)-1,15)). Default values for learning
-% rate are linspace(1e-3,1,10). Default: [].
+% Range of max # splits to be tested can be input using optional argument 'mns' and min leaf
+% size using optional argument 'mls'. You should pass in a sequence of
+% values that is n x 1 in size. 'mlsmn' can be used to set the min mls and
+% 'mlsmx' the max mls (i.e., to have stabsel generate a series between
+% these two values; the exact number of values can be controled by setting
+% 'mln' the default for which is 3). 'mnsmn' and 'mnsmx' are equivalent min
+% and max values for min leaf size (default 'mnsn' is set to 3 to generate
+% 3 values between 'mnsmn' and 'mnsmx'). Default values for lam are 5 linearly
+% spaced values between 1 and 300. Default values for min leaf size are
+% round(linspace(1,max(2,floor(size(X,2)/2)),3)). Default values for max #
+% splits are round(linspace(1,size(X,2)-1,3)). Default: [].
 %
 %% ------------------------------------------------------------------------
 % ---------- Optional arguments for outlier detection/removal -------------
@@ -520,8 +554,10 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % outlierMethod).
 %
 %% ------------------------------------------------------------------------
-% --------------------- Optional arguments for nca ------------------------
+% --------------------- Optional arguments for PLS ------------------------
 % -------------------------------------------------------------------------
+%
+% 'nComp' : number of components to test. Default: 1:30
 %
 %% ------------------------------------------------------------------------
 % ------ Optional arguments for corr and robust linear regression ---------
@@ -542,15 +578,6 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % Internal notes ----------------------------------------------------------
 % -------------------------------------------------------------------------
-% 1) make lasso return weights for lambda that was chosen as scores 2)
-% verbose warnings, displays are not consistent across algorithms 3) need
-% more verbose options and feedback 4) fix RF defaults and just warn about
-% computational time (maybe based on
-% # of features) 5) documentation details lots of recommendations where
-% settings  *should* be adapted based on other settings being changed away
-% from defaults. Check if user changed these and update them yourself if
-% they are obviously terrible, otherwise just throw a warning. 6) NCA could
-% have lambdas defined inside sampling scheme...
 %
 % Alex Teghipco // alex.teghipco@sc.edu // July 13, 2022
 
@@ -564,25 +591,39 @@ options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],.
     'outlierReps',1,'outlierRepThresh',1,'outlierMethod','median',...
     'outlierDir','row','outlierThresh',3,'selAlgo','en','lst','linear',...
     'gam',1,'lrp',0.05,'rK',[1:14 15:10:size(X,2)/2],'rE',[10:15:200],...
-    'lamRF',[],'lr',[],'mls',[],'mns',[],'verbose',false,'logDirPref','smaller',...
+    'lr',[],'mls',[],'mns',[],'verbose',false,'logDirPref','smaller',...
     'filter',false,'filterThresh',0.05,'samType','bootstrap','compPars',true,...
-    'ridgeRegSelect','largest','lamOutlier',true,'fixMax',false);
+    'ridgeRegSelect','largest','lamOutlier',true,'fixMax',false,'nComp',[1:30],...
+    'problem','regression','stack',false,'lrmn',0.001,'lrmx',1,'lrn',5,'mlsmn',[],...
+    'mlsmx',[],'mln',3,'mnsmn',[],'mnsmx',[],'mnsn',3,'keepScores',true,'ensType','bagged');
+
 optionNames = fieldnames(options);
 rng shuffle
 
-% now parse the user-specified arguments and overwrite the defaults
+% check if rf passed in but not lmn or lmx. Then, update defaults
 vleft = varargin(1:end);
+idx = find(strcmpi(vleft,'selAlgo'));
+if strcmpi(vleft(idx+1),'ens')
+    idx1 = find(strcmpi(vleft,'lmn'));
+    idx2 = find(strcmpi(vleft,'lmx'));
+    if isempty(idx1)
+        options.lmn = 1;
+    end
+    if isempty(idx2)
+        options.lmx = 400;
+    end
+end
+idx2 = find(strcmpi(vleft,'lam'));
+if ~isempty(idx2) && strcmpi(vleft(idx+1),'ens') && size(y,2) > 1
+    options.lam = repmat(options.lam,size(y,2),1);
+end
+
+% now parse the user-specified arguments and overwrite the defaults
 for pair = reshape(vleft,2,[]) %pair is {propName;propValue}
     inpName = pair{1}; % make case insensitive by using lower() here but this can be buggy
     if any(strcmpi(inpName,optionNames)) % check if arg pair matches default
         def = options.(inpName); % default argument
-        %if ~isempty(pair{2}) % if passed in argument isn't empty, then
-        %write that in as the option
         options.(inpName) = pair{2};
-        %else
-        %    options.(inpName) = def; % otherwise use the default values
-        %    for the option
-        %end
     else
         error('%s is not a valid argument',inpName)
     end
@@ -605,13 +646,67 @@ end
 if (str2double(v(1:end-1)) < 2015 || (str2double(v(1:end-1)) == 2015 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'gpr')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2015b...please install a more recent version of matlab (2015b+) to use GPR for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'rf')
-    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2016b...please install a more recent version of matlab (2016b+) to use RF for feature selection'])
+if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'ens')
+    error(['Uh oh, it looks like your version of matlab (' v ') is from before 2016b...please install a more recent version of matlab (2016b+) to use ensembles for feature selection'])
 end
 if str2double(v(1:end-1)) < 2008 % cvpartition is faster than manual subsampling but requires 2008
     manualSubs = true;
 else
     manualSubs = false;
+end
+
+% warnings about compute
+ if size(y,2) > 1 && ~strcmpi(options.selAlgo,'pls') && ~options.stack
+     warning('Looks like your input y is a matrix. By default, we will independently run your selection algorithm on each task and average the rankings of features across tasks. This can be very computationally expensive and does not work for all problems. I would recommend using PLS instead if this is an issue.')
+     if options.keepScores
+         warning('You have chosen to keep scores for all tasks, this can use up a lot of memory')
+     end
+ end
+ 
+ % warning about ensembles
+ if strcmpi(options.selAlgo,'ens') && ~strcmpi(options.ensType,'bagged') && strcmpi(options.problem,'classification')
+    idx = find(options.ensType,{'LogitBoost','GentleBoost','AdaBoostM1','AdaBoostM2','RUSBoost'});
+    if isempty(idx)
+        options.ensType = 'LogitBoost';
+        warning('You have selected a boosted ensemble for classification but your boosting method must be: LogitBoost GentleBoost AdaBoostM1 AdaBoostM2 or RUSBoost...Setting to LogitBoost')
+    elseif ~isempty(intersect(idx,[4 5]))
+        for i = 1:size(y,2)
+            un(i,1) = length(unique(y(:,i)));
+        end
+        idx = find(un < 3);
+        if ~isempty(idx)
+            options.ensType = 'LogitBoost';
+            warning('You must have 3+ classes to use AdaBoostM2 or RUSBoost...setting to LogitBoost')
+        end
+    end
+ end
+ 
+% check if classification is used w/incompatible method and vice versa
+if strcmpi(options.problem,'classification') && strcmpi(options.selAlgo,{'lasso','en','corr','robustLR','ftest','relieff','gpr','pls'})
+   error('You cannot use lasso en corr robustLR ftest relieff gpr or pls algorithm options with classification problems')
+end
+ 
+if strcmpi(options.problem,'regression') & strcmpi(options.selAlgo,{'ttest','wilcoxon','entropy','roc','bhattacharyya'})
+    error('You cannot use ttest, wilcoxon, entropy, roc or bhattacharyya algorithm options with regression problems')
+end
+
+% stack independent variables
+oys = size(y);
+if options.stack
+   y = reshape(y,[size(y,1)*size(y,2),1]);
+   X = repmat(X,oys(2),1);
+end
+
+% fix pls options
+if strcmpi(options.selAlgo,'pls')
+    idx = find(options.nComp >= size(y,2));
+    if ~isempty(idx)
+        options.nComp(idx) = [];
+        warning('Removing components larger than the number of tasks in your data')
+    end
+    if isempty(options.nComp)
+        options.nComp = 1;
+    end
 end
 
 % fix lasso or ridge as inputs
@@ -622,6 +717,21 @@ end
 if strcmpi(options.selAlgo,'ridge')
     options.alpha = 0.00001;
     options.selAlgo = 'en';
+end
+
+% fix usage of filter
+poss = {'mrmr','relieff','ftest','ttest','wilcoxon','entropy','roc','bhattacharyya'};
+idx = find(strcmpi(options.selAlgo,poss));
+if ~options.filter && ~isempty(idx)
+    warning(['You can only use ' poss{idx} ' as a filter. Changing options to filter'])
+    options.filter = true;
+    options.fixMax = false;
+end
+
+% fix missing maxVars when using a filter
+if isempty(options.maxVars) && options.filter
+    options.maxVars = size(X,2)/10;
+    warning(['You did not specify the number of variables to use in the filter. Using a tenth of your features...'])
 end
 
 % fix numFalsePos
@@ -641,7 +751,7 @@ if options.propN && options.prop >= 1
     options.prop = options.prop/size(X,1);
     if options.verbose
         disp('Changing subsampling N to proportion...')
-        disp(['To achieve N of ' num2str(tmp) ' in subsample, proportion must be: ' num2str(options.prop)]);
+        disp(['To achieve N of ' num2str(tmpl) ' in subsample, proportion must be: ' num2str(options.prop)]);
     end
 end
 
@@ -650,9 +760,13 @@ if strcmpi(options.selAlgo,'en') && ~isempty(options.maxVars) && ~options.fixMax
     options.fixMax = true;
     warning('When passing in a maxVars with lasso, ridge, elastic net, or nca we have to set fixMax to true to ensure a max of maxVars is returned across regularization parameters. Setting it to true now.')
 end
-if (strcmpi(options.selAlgo,'nca') || strcmpi(options.selAlgo,'corr') || strcmpi(options.selAlgo,'robustLR')) && ~isempty(options.maxVars) && ~options.filter
+
+% check for weird cases 
+toch = {'nca','corr','robustLR'};
+idx = find(strcmpi(options.selAlgo,toch));
+if ~isempty(idx) && ~isempty(options.maxVars) && ~options.filter
     options.filter = true;
-    warning('When passing in a maxVars with correlation or robust linear regression, we assume you want to use both as a filter');
+    warning(['When passing in a maxVars with ' toch{idx} ', we assume you want to use them as a filter']);
 end
 
 % warning about threshold if it is known--cannot be below 0.5 if you want
@@ -696,9 +810,9 @@ if isempty(options.maxVars) && ~isempty(options.thresh)
             n1 = sqrt(size(X,2)*(tmpii(i)/(1/((2*options.thresh)-1))));
             tmpi(i,1) = ((1/((2*options.thresh)-1))*((n1.^2)/size(X,2)))/n1;
         end
-        id = find(tmpi < options.fdr,1,'last');
-        if ~isempty(id)
-            options.numFalsePos = tmpii(id);
+        idx = find(tmpi < options.fdr,1,'last');
+        if ~isempty(idx)
+            options.numFalsePos = tmpii(idx);
         else
             options.numFalsePos = NaN;
             warning('It was not possible to find a number of false positives that would ensure selected fdr-like threshold. numFalsePos will be set to 1 to estimate maxVars.')
@@ -725,18 +839,6 @@ end
 if options.verbose && options.prop ~= 0.5
     warning('Having a sampling proportion other than 0.5 may break estimation of the number of false positives (incl. fdr option). This may be okay to do in some cases (see original stability selection paper).')
 end
-
-% estimate # variables we SHOULD force algorithm to select...
-%if ~isempty(options.maxVars) && ~isempty(options.thresh) &&
-
-% if isempty(options.maxVars) && ~isempty(options.thresh)
-%     options.maxVars = round(sqrt(0.8*options.corr*size(X,2))); if
-%     options.verbose
-%         disp(['The number of variables you should force your selection
-%         algorithm to choose is: ' num2str(options.maxVars)])
-%     end
-% end
-%(1/((2*options.thresh)-1))*((options.maxVars.^2)/size(X,2))
 
 % check for redundant lambda args...
 if (~isempty(options.lam) && (strcmpi(options.lamInside,'across') || strcmpi(options.lamInside,'inside'))) && (strcmpi(options.selAlgo,'en') || strcmpi(options.selAlgo,'gpr'))
@@ -765,7 +867,7 @@ if strcmpi(options.outlier,'outside')
     % check if you want to adjust subsampling prop. to account for #
     % outliers removed...prop will be adjusted to keep training set same
     % size as if the prop selected was applied to all data...
-    y(oid) = [];
+    y(oid,:) = [];
     if options.verbose
         if strcmpi(options.outlierDir,'rows')
             disp(['Removed ' num2str(length(oid)) ' row (samples) outliers from data (' num2str((length(oid)/size(X,2))*100) '%) before subsampling'])
@@ -797,7 +899,9 @@ if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(opti
             disp('Computing lambda values for EN (lambda values are computed from the whole dataset and the same series will be passed in to each subsample)')
         end
         for kk = 1:length(options.alpha)
-            [~,~,options.lam(:,kk)] = defLam(X,y,options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,~,options.lam(:,kk,mm)] = defLam(X,y(:,mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+            end
         end
     else % if adaptive we need to run first pass EN on whole data, get weights and get lambdas from those weights
         if options.verbose
@@ -805,7 +909,9 @@ if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(opti
         end
         [Xtmp,~,~,~] = alasso(X,y,[],[],[],options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
         for kk = 1:length(options.alpha)
-            [~,~,options.lam(:,kk)] = defLam(Xtmp,y,options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,~,options.lam(:,kk,mm)] = defLam(Xtmp,y(:,mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+            end
         end
         if options.adaptOutside
             X = Xtmp;
@@ -835,22 +941,22 @@ if isempty(options.lam) && strcmpi(options.selAlgo,'nca')
         end
     end
     if strcmpi(options.lst,'linear')
-        options.lam = linspace(options.lmn,options.lmx,options.ln)*std(y)/length(y);
+        options.lam = linspace(options.lmn,options.lmx,options.ln)*std(y(:))/size(y,1);
     elseif strcmpi(options.lst,'log')
-        options.lam = exp(linspace(log(options.lmn),log(options.lmx),options.ln))*std(y)/length(y);
+        options.lam = exp(linspace(log(options.lmn),log(options.lmx),options.ln))*std(y(:))/size(y,1);
     end
 end
 
 % define lambdas for GPR
 if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(options.selAlgo,'gpr')
     if isempty(options.lmn)
-        options.lmn = 1e-2*std(y)/3;
+        options.lmn = 1e-2*std(y(:))/3;
         if options.verbose
             disp(['The min lambda for GPR is set to a default of: ' num2str(options.lmn)])
         end
     end
     if isempty(options.lmx)
-        options.lmx = 1e-2*std(y)*3;
+        options.lmx = 1e-2*std(y(:))*3;
         if options.verbose
             disp(['The max lambda for GPR is set to a default of: ' num2str(options.lmx)])
         end
@@ -870,26 +976,53 @@ end
 
 % define lots of vars for RF -- note we currently only use lamRF (number of
 % learning cycles) because doing this much tuning is expensive...RF IS
-% CURRENTLY EXPERIMENTAL
-if isempty(options.lamRF) && strcmpi(options.selAlgo,'rf')
-    warning('RF parameters are currently hard coded...its difficult to find reasonable set of parameters that are quick to evaluate (currently only evaluate learning cycles between 10 and 500 based on passed ln argument)')
-    if isempty(options.lamRF)
-        options.lamRF = linspace(10,500,options.ln);
+if isempty(options.lam) && strcmpi(options.selAlgo,'ens')
+    if isempty(options.lam)
+        if strcmpi(options.lst,'linear')
+            options.lam = linspace(options.lmn,options.lmx,options.ln);
+        else
+            options.lam = exp(linspace(log(options.lmn),log(options.lmx),options.ln));
+        end
     end
-    if isempty(options.lr)
-        options.lr = linspace(1e-3,1,10);
+end 
+if isempty(options.lr) && strcmpi(options.selAlgo,'ens')
+    if strcmpi(options.lst,'linear')
+        options.lr = linspace(options.lrmn,options.lrmx,options.lrn); % 1 500
+    else
+        options.lr = exp(linspace(log(options.lrmn),log(options.lrmx),options.lrn));
     end
-    if isempty(options.mls)
-        options.mls = round(linspace(1,max(2,floor(size(X,2)/2)),15));
+end
+if isempty(options.mls) && strcmpi(options.selAlgo,'ens')
+    if isempty(options.mlsmn)
+        options.mlsmn = 1;
     end
-    if isempty(options.mns)
-        options.mns = round(linspace(1,size(X,2)-1,15));
+    if isempty(options.mlsmx)
+        options.mlsmx = max(2,floor(size(X,2)/2));
+    end
+    if strcmpi(options.lst,'linear')
+        options.mls = round(linspace(options.mlsmn,options.mlsmx,options.mln));
+    else
+        options.mls = round(exp(linspace(options.mlsmn,options.mlsmx,options.mln)));
+    end
+end
+if isempty(options.mns) && strcmpi(options.selAlgo,'ens')
+    if isempty(options.mnsmn)
+        options.mnsmn = 1;
+    end
+    if isempty(options.mnsmx)
+        options.mnsmx = size(X,2)-1;
+    end
+    if strcmpi(options.lst,'linear')
+        options.mns = round(linspace(options.mnsmn,options.mnsmx,options.mnsn));
+    else
+        options.mns = exp(linspace(log(options.mnsmn),log(options.mnsmx),options.mnsn));
     end
 end
 
 % initialize outputs...occasionally these are undefined depending on user
 % args
 scores = [];
+allScores = [];
 lam = [];
 if strcmpi(options.selAlgo,'en')
     empMaxVars = repmat(NaN,length(options.alpha),1);
@@ -900,10 +1033,10 @@ end
 % preallocate subsample indices...this is in case you want to get lamba
 % min/max using the subsamples (i.e., we get one series of l but tailored
 % to the data)
+n = round(size(y,1)*options.prop); % get number of feats per subsample/bootstrap now to adjust defaults
 if options.verbose
     disp('Preallocating subsample indices')
 end
-n = round(length(y)*options.prop);
 if options.prop == 1
     if options.verbose && options.compPars
         warning('You cannot sample your entire dataset and ensure complementary pairs. Turning off complementary pairs.')
@@ -914,7 +1047,7 @@ for j = 1:options.rep
     if options.prop < 1
         if strcmpi(options.samType,'subsample')
             if manualSubs
-                s = 1:length(y);
+                s = 1:size(y,1);
                 if options.compPars && j ~= 1
                     s = setdiff(s,ctr{j-1});
                 end
@@ -929,14 +1062,14 @@ for j = 1:options.rep
                 ctr{j} = find(test(c3)==1);
             end
         elseif strcmpi(options.samType,'bootstrap')
-            s = 1:length(y);
+            s = 1:size(y,1);
             if options.compPars && j ~= 1
                 s = setdiff(s,ctr{j-1});
             end
             ctr{j} = s(ceil(length(s)*rand(1,n)));
         end
     elseif options.prop == 1
-        ctr{j} = 1:length(y);
+        ctr{j} = 1:size(y,1);
         if options.verbose && j == 1
             warning('Your subsamples comprise the entire dataset')
         end
@@ -950,17 +1083,24 @@ for j = 1:options.rep
                     end
                 end
                 for kk = 1:length(options.alpha)
-                    [~,~,tmpl] = defLam(X(ctr{j},:),y(ctr{j}),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
-                    tmplmn(kk,j) = min(tmpl);
-                    tmplmx(kk,j) = max(tmpl);
+                    for mm = 1:size(Ytmp,2)  % Loop over output variables
+                        [~,~,tmpl] = defLam(X(ctr{j},:),y(ctr{j},mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+                        tmplmn(kk,j,mm) = min(tmpl);
+                        tmplmx(kk,j,mm) = max(tmpl);
+                    end
                 end
             else
-                tmpid = setdiff([1:length(y)],ctr{j});
-                [Xtmp,~,bin,fitin] = alasso(X(ctr{j},:),y(ctr{j}),X(tmpid,:),y(tmpid),1e-300,options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+                tmpid = setdiff([1:size(y,1)],ctr{j});
+                for mm = 1:size(Ytmp,2)  % Loop over output variables
+                    [Xtmp(:,:,mm),~,~,~] = alasso(X(ctr{j},:),y(ctr{j},mm),X(tmpid,:),y(tmpid,mm),1e-300,options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+                end
+                Xtmp = mean(Xtmp,3);
                 for kk = 1:length(options.alpha)
-                    [~,~,tmpl] = defLam(Xtmp,y(ctr{j}),options.alpha(kk),false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
-                    tmplmn(kk,j) = min(tmpl);
-                    tmplmx(kk,j) = max(tmpl);
+                    for mm = 1:size(Ytmp,2)  % Loop over output variables
+                        [~,~,tmpl] = defLam(Xtmp,y(ctr{j},mm),options.alpha(kk),false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
+                        tmplmn(kk,j,mm) = min(tmpl);
+                        tmplmx(kk,j,mm) = max(tmpl);
+                    end
                 end
                 if options.verbose
                     if j == 1
@@ -969,20 +1109,22 @@ for j = 1:options.rep
                 end
             end
         elseif strcmpi(options.selAlgo,'gpr')
-            tmplmn(j) = 1e-2*std(y(ctr{j}))/3;
-            tmplmx(j) = 1e-2*std(y(ctr{j}))*3;
+            tmp = y(ctr{j},:);
+            tmplmn(j) = 1e-2*std(tmp(:))/3;
+            tmplmx(j) = 1e-2*std(tmp(:))*3;
         end
     end
 end
 if strcmpi(options.lamInside,'across') && strcmpi(options.selAlgo,'en') % this is because GPR lambdas will not vary across parameters but EN will
-    %options.lam = tmpl;
     for kk = 1:length(options.alpha)
-        if options.lamOutlier
-            id = find(tmplmx(kk,:) < prctile(tmplmx(kk,:),95)==1);
-        else
-            id = 1:lenght(tmplmx(kk,:));
+        for mm = 1:size(Ytmp,2)  % Loop over output variables
+            if options.lamOutlier
+                idx = find(tmplmx(kk,:) < prctile(tmplmx(kk,:),95)==1);
+            else
+                idx = 1:length(tmplmx(kk,:));
+            end
+            [~,~,options.lam(:,kk,mm)] = defLam([],[],options.alpha(kk),options.stnd,max(tmplmx(kk,idx,mm)),min(tmplmn(kk,idx,mm)),options.lamRatio,options.lst,options.ln,options.logDirPref);
         end
-        [~,~,options.lam(:,kk)] = defLam([],[],options.alpha(kk),options.stnd,max(tmplmx(kk,id)),min(tmplmn(kk,id)),options.lamRatio,options.lst,options.ln,options.logDirPref);
     end
 elseif strcmpi(options.lamInside,'across') && strcmpi(options.selAlgo,'gpr')
     if strcmpi(options.lst,'linear')
@@ -996,17 +1138,20 @@ end
 % subsamples
 if strcmpi(options.selAlgo,'EN')
     fsc = zeros(size(X,2),options.ln,length(options.alpha)); % features x lam x alpha
-elseif strcmpi(options.selAlgo,'robustLR') || strcmpi(options.selAlgo,'corr') || strcmpi(options.selAlgo,'mrmr') || strcmpi(options.selAlgo,'ftest')
-    fsc = zeros(size(X,2),1); % features
 elseif strcmpi(options.selAlgo,'nca') || strcmpi(options.selAlgo,'gpr')
     fsc = zeros(size(X,2),options.ln); % features x lam
 elseif strcmpi(options.selAlgo,'relieff')
     fsc = zeros(size(X,2),length(options.rK),length(options.rE)); % features x knn x sigma
-elseif strcmpi(options.selAlgo,'rf')
-    %fsc =
-    %zeros(size(X,2),length(options.lamRF),length(options.mls),length(options.mns));
-    %% features x lamRF x mls x mns
-    fsc = zeros(size(X,2),length(options.lamRF)); % features x lamRF x mls x mns
+elseif strcmpi(options.selAlgo,'ens')
+    if strcmpi(options.ensType,'bagged')
+        fsc = zeros(size(X,2),length(options.lam),length(options.mls),length(options.mns));
+    else
+        fsc = zeros(size(X,2),length(options.lam),length(options.mls),length(options.mns),length(options.lr));
+    end
+elseif strcmpi(options.selAlgo,'pls')
+    fsc = zeros(size(X,2),length(options.nComp)); % features x lamRF x mls x mns
+else 
+    fsc = zeros(size(X,2),1); % features
 end
 if options.verbose
     disp(['Allocated matrix for counting feature selection across algorithm parameter. Size is: ' num2str(size(fsc))])
@@ -1025,14 +1170,14 @@ for i = 1:options.rep
     
     % get subsample indices...
     Xtmp = X(ctr{i},:);
-    Ytmp = y(ctr{i});
+    Ytmp = y(ctr{i},:);
     
     % remove outliers defined as either rows (samples) or cols (features)
     si = 1:size(Xtmp,2);
     if strcmpi(options.outlier,'inside')
         [Xtmp,oid{i},mdl{i},~] = rmOutliers(Xtmp,'prepro',options.outlierPrepro,'nonconsec',options.outlierPreproNonconsec,'outlierMethod',options.outlierMethod,'outlierDir',options.outlierDir,'outlierThresh',options.outlierThresh,'pcaP',options.outlierPreproP,'pcaPermN',options.outlierPreproN,'propOutliers',options.propOutliers,'rep',options.outlierReps,'repThresh',options.outlierRepThresh);
         if strcmpi(options.outlierDir,'rows')
-            Ytmp(oid{i}) = [];
+            Ytmp(oid{i},:) = [];
         else
             si(oid{i}) = [];
         end
@@ -1049,119 +1194,118 @@ for i = 1:options.rep
     end
     
     % do standardization if necessary
-    if options.stnd && (~strcmpi(options.selAlgo,'en') && ~strcmpi(options.selAlgo,'lasso') && ~strcmpi(options.selAlgo,'ridge') && ~strcmpi(options.selAlgo,'rf') && ~strcmpi(options.selAlgo,'gpr'))
+    if options.stnd && (~strcmpi(options.selAlgo,'en') && ~strcmpi(options.selAlgo,'lasso') && ~strcmpi(options.selAlgo,'ridge') && ~strcmpi(options.selAlgo,'ens') && ~strcmpi(options.selAlgo,'gpr'))
         Xtmp = bsxfun(@rdivide,bsxfun(@minus,Xtmp,mean(Xtmp,2)),std(Xtmp,0,2));
+    end
+    
+    % Start group lasso...
+    if strcmpi(options.selAlgo,'groupLasso')
+        lambda_max = max(max(abs(Xtmp'*(Ytmp/size(Xtmp,1)))));
+        [~,~,lam] = defLam(Xtmp,Ytmp,1,stnd,[],[],options.lamRatio,options.lst,options.ln,options.logDirPref);
+        [lsB,lsDF] = group_lasso_basic(Xtmp,Ytmp, lam);
+        empMaxVars(1) = mean([empMaxVars(1) mean([lsDF zeros(options.ln - length(lsDF),1)'])],'omitnan');
+        scoresTmp = zeros(size(Xtmp, 2),size(lam,1));  % Temporary scores matrix
+        for jj = 1:size(scores(i,kk,:,:),4)
+            id = find(scores(i,kk,:,jj)~=0);
+            if ~isempty(id)
+                fsc(si(id),jj,kk) = fsc(si(id),jj,kk)+1;
+            end
+        end
     end
     
     % start EN...
     if strcmpi(options.selAlgo,'EN')
         % copy in lambda values precalculated...
         lam = options.lam;
-        
         % run EN to get weights for adaptive lasso
         if options.adaptive
-            tmpid = setdiff([1:length(y)],ctr{i});
-            [Xtmp,~,~,~] = alasso(Xtmp,Ytmp,X(tmpid,:),y(tmpid),1e-300,stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+            tmpid = setdiff([1:size(y,1)],ctr{i});
+            for mm = 1:size(Ytmp,2)
+                [Xtmp2(:,:,mm),~,~,~] = alasso(Xtmp,Ytmp(:,mm),X(tmpid,:),y(tmpid,mm),1e-300,stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
+            end
+            Xtmp = mean(Xtmp,3);
             stnd = false; % fix stnd for lasso OF weights
         end
         
         % now do lasso for each alpha (within each we pass in our lams)
         for kk = 1:length(options.alpha)
             if strcmpi(options.lamInside,'during')
-                [~,~,lam(:,kk)] = defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],[],options.lamRatio,options.lst,options.ln,options.logDirPref);
-            end
-            if options.parallel
-                if options.fixMax
-                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
-                else
-                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'Options',statset('UseParallel',true));
+                for mm = 1:size(Ytmp,2)
+                    [~,~,lam(:,kk,mm)] = defLam(Xtmp,Ytmp(:,mm),options.alpha(kk),stnd,[],[],options.lamRatio,options.lst,options.ln,options.logDirPref);
                 end
-                %                if sum(lsFit.DF == 0) == length(lam(:,kk))
-                %                && strcmpi(options.lamInside,'during') %
-                %                add zero lambda if we are still not
-                %                getting any variables...
-                %                    [~,~,lam(:,kk)] =
-                %                    defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
-                %                    [lsB,lsFit] =
-                %                    lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',true));
-                %                end
-            else
-                if options.fixMax
-                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
-                else
-                    [lsB,lsFit] = lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd);
-                end
-                % if sum(lsFit.DF == 0) == length(lam(:,kk)) &&
-                % strcmpi(options.lamInside,'during')
-                %                    [~,~,lam(:,kk)] =
-                %                    defLam(Xtmp,Ytmp,options.alpha(kk),stnd,[],0,options.lamRatio,options.lst,options.ln,options.logDirPref);
-                %                    [lsB,lsFit] =
-                %                    lasso(Xtmp,Ytmp,'Lambda',lam(:,kk),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars);
-                %                end
-            end
-            empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF),1)'])],'omitnan');
-            
-            if options.verbose
-                disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
             end
             
-            % we need to adjust lam in cases where lasso output excludes a
-            % certain lam we passed in (i.e., l is too low).
-            if ~isempty(lsFit.Lambda)
-                [~, adj] = min(abs(lam(:,kk) - lsFit.Lambda(1))); adj = adj-1;
-                if options.verbose
-                    disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
+            scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2),size(lam,1));  % Temporary scores matrix
+            for mm = 1:size(Ytmp,2)
+                if options.fixMax
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp(:,mm),'Lambda',lam(:,kk,mm),'Alpha',options.alpha(kk),'Standardize',stnd,'DFMax',options.maxVars,'Options',statset('UseParallel',options.parallel));
+                else
+                    [lsB,lsFit] = lasso(Xtmp,Ytmp(:,mm),'Lambda',lam(:,kk,mm),'Alpha',options.alpha(kk),'Standardize',stnd,'Options',statset('UseParallel',options.parallel));
                 end
                 
-                for jj = 1:size(lsB,2)
-                    %                    if lsFit.DF(jj) > options.maxVars
-                    %                        [~,id] =
-                    %                        maxk(lsB(:,jj),options.maxVars);
-                    %                    else
-                    %                        id = find(lsB(:,jj)~=0);
-                    %                    end
-                    id = find(lsB(:,jj)~=0);
+                empMaxVars(kk) = mean([empMaxVars(kk) mean([lsFit.DF zeros(options.ln - length(lsFit.DF),1)'])],'omitnan');
+                % we need to adjust lam in cases where lasso output excludes a
+                % certain lam we passed in (i.e., l is too low).
+                if ~isempty(lsFit.Lambda)
+                    [~, adj] = min(abs(lam(:,kk,mm) - lsFit.Lambda(1))); adj = adj-1;
+                    if options.verbose
+                        disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
+                    end
+                end
+                scoresTmp(:,mm,adj+1:end) = lsB;
+                
+                if options.verbose
+                    disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
+                end
+            end
+            scores(i,kk,:,:) = squeeze(mean(scoresTmp, 2));
+            if options.keepScores
+                allScores{i} = scoresTmp;
+            end
+            %empMaxVars = mean(empMaxVars,2);
+            if ~isempty(lsFit.Lambda)
+                for jj = 1:size(scores(i,kk,:,:),4)
+                    id = find(scores(i,kk,:,jj)~=0);
                     if ~isempty(id)
-                        fsc(si(id),jj+adj,kk) = fsc(si(id),jj+adj,kk)+1;
+                        fsc(si(id),jj,kk) = fsc(si(id),jj,kk)+1;
                     end
                 end
             else
-                %adj = 0;
                 warning('No lambdas returned any elastic net coefficients in this run. It is difficult to select a series of lambda values that fit all of your data. Try defining lambda series *outside* the subsampling procedure (if you are not doing so already).')
             end
-            
-            % now count selected feats
-            %            if strcmpi(options.outlier,'none') ||
-            %            (strcmpi(options.outlier,'inside') &&
-            %            strcmpi(options.outlierDir,'rows'))
-            %               id = find(lsB(:,1)~=0); if ~isempty(id)
-            %                   fsc(id,adj+1,kk) = fsc(id,adj+1,kk)+1;
-            %               end
-            %                %                for jj = 1:size(lsB,2)
-            % %                    if ~isempty(lsB) %
-            % id = find(lsB(:,jj)~=0); %
-            % fsc(id,jj+adj,kk) = fsc(id,jj+adj,kk)+1; %
-            % end %                end
-            %            else
-            %                s = 1:size(X,2); s(oid{i}) = []; for jj =
-            %                1:size(lsB,2)
-            %                    if ~isempty(lsB)
-            %                        id = find(lsB(:,jj)~=0);
-            %                        fsc(s(id),jj+adj,kk) =
-            %                        fsc(s(id),jj+adj,kk)+1;
-            %                    end
-            %                end
-            %            end
         end
     end
     
     % start linear regression...
     if strcmpi(options.selAlgo,'corr')
-        [rV,pV] = corr(Xtmp,Ytmp,'rows','pairwise');
-        if ~options.filter
-            id = find(pV <= options.filterThresh);
+        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+        if ~options.parallel
+            for mm = 1:size(Ytmp, 2)  % Loop over output variables
+                [rV,pV] = corr(Xtmp,Ytmp(:,mm),'rows','pairwise');
+                if ~options.filter
+                    scoresTmp(:, mm) = pV;
+                else
+                    scoresTmp(:, mm) = abs(rV);
+                end
+            end
         else
-            [~,idtmp] = sort(abs(rV),'descend');
+            parfor mm = 1:size(Ytmp, 2)  % Loop over output variables
+                [rV,pV] = corr(Xtmp,Ytmp(:,mm),'rows','pairwise');
+                if ~options.filter
+                    scoresTmp(:, mm) = pV;
+                else
+                    scoresTmp(:, mm) = abs(rV);
+                end
+            end
+        end
+        scores(i,:) = mean(scoresTmp, 2);  % Average importance scores across output variables
+        if options.keepScores
+            allScores{i} = scoresTmp;
+        end
+        if ~options.filter
+            id = find(scores(i,:) <= options.filterThresh);
+        else
+            [~,idtmp] = sort(scores(i,:),'descend');
             id = idtmp(1:options.maxVars);
         end
         fsc(si(id)) = fsc(si(id))+1;
@@ -1171,38 +1315,42 @@ for i = 1:options.rep
     end
     
     if strcmpi(options.selAlgo,'robustLR')
+        id = [];
+        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+%         if ~options.parallel
+            for kk = 1:size(Xtmp,2)
+                for mm = 1:size(Ytmp,2)  % Loop over output variables
+                    lm = fitlm(Xtmp(:,kk),Ytmp(:,mm),'RobustOpts','on');
+                    if ~options.filter
+                        scoresTmp(kk,mm) = lm.Coefficients.pValue(2);
+                    else
+                        scoresTmp(kk,mm) = lm.Coefficients.Estimate(2);
+                    end
+                end
+            end
+%         else
+%             parfor kk = 1:size(Xtmp,2)
+%                 for mm = 1:size(Ytmp,2)  % Loop over output variables
+%                     lm = fitlm(Xtmp(:,kk),Ytmp(:,mm),'RobustOpts','on');
+%                     if ~options.filter
+%                         scoresTmp(kk,mm) = lm.Coefficients.pValue(2);
+%                     else
+%                         scoresTmp(kk,mm) = lm.Coefficients.Estimate(2);
+%                     end
+%                 end
+%             end
+%         end
+        scores(i,:) = mean(scoresTmp, 2);
+        if options.keepScores
+            allScores{i} = scoresTmp;
+        end
         if ~options.filter
-            id = [];
-            if ~options.parallel
-                for kk = 1:size(Xtmp,2)
-                    lm = fitlm(Xtmp(:,kk),Ytmp,'RobustOpts','on');
-                    if lm.Coefficients.pValue(2) <= options.filterThresh
-                        id = [id kk];
-                    end
-                end
-            else
-                parfor kk = 1:size(Xtmp,2)
-                    lm = fitlm(Xtmp(:,kk),Ytmp,'RobustOpts','on');
-                    if lm.Coefficients.pValue(2) <= options.lrp
-                        id = [id kk];
-                    end
-                end
-            end
+            id = find(scores(i,:) <= options.filterThresh);
         else
-            if ~options.parallel
-                for kk = 1:size(Xtmp,2)
-                    lm = fitlm(Xtmp(:,kk),Ytmp,'RobustOpts','on');
-                    scores(kk,1) = lm.Coefficients.Estimate(2);
-                end
-            else
-                parfor kk = 1:size(Xtmp,2)
-                    lm = fitlm(Xtmp(:,kk),Ytmp,'RobustOpts','on');
-                    scores(kk,1) = lm.Coefficients.Estimate(2);
-                end
-            end
-            [~,idtmp] = sort(scores,'descend');
+            [~,idtmp] = sort(scores(i,:),'descend');
             id = idtmp(1:options.maxVars);
         end
+        
         fsc(si(id)) = fsc(si(id))+1;
         if ~options.filter
             empMaxVars = mean([empMaxVars mean(length(id))],'omitnan');
@@ -1211,13 +1359,68 @@ for i = 1:options.rep
     
     % start mrmr...
     if strcmpi(options.selAlgo,'mrmr')
-        [id,scores{i}] = fsrmrmr(Xtmp,Ytmp);
+        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+        if ~options.parallel
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                if strcmpi(options.problem ,'regression')
+                    [~,scoresTmp(:,mm)] = fsrmrmr(Xtmp,Ytmp);
+                elseif strcmpi(options.problem,'classification')
+                    [~,scoresTmp(:,mm)] = fscmrmr(Xtmp,Ytmp);
+                end
+            end
+        else
+            parfor mm = 1:size(Ytmp,2)  % Loop over output variables
+                if strcmpi(options.problem ,'regression')
+                    [~,scoresTmp(:,mm)] = fsrmrmr(Xtmp,Ytmp);
+                elseif strcmpi(options.problem,'classification')
+                    [~,scoresTmp(:,mm)] = fscmrmr(Xtmp,Ytmp);
+                end
+            end
+        end
+        scores(i,:) = mean(scoresTmp, 2);
+        if options.keepScores
+            allScores{i} = scoresTmp;
+        end
+        [~,id] = sort(scores(i,:),'descend');
+        fsc(si(id(1:options.maxVars))) = fsc(si(id(1:options.maxVars)))+1;
+    end
+    
+    if strcmpi(options.selAlgo,'ttest') || strcmpi(options.selAlgo,'bhattacharyya') || strcmpi(options.selAlgo,'entropy') || strcmpi(options.selAlgo,'roc') || strcmpi(options.selAlgo,'wilcoxon')
+        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+        if ~options.parallel
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,scoresTmp(:,mm)] = rankfeatures(Xtmp',Ytmp(:,mm),'Criterion',options.selAlgo);
+            end
+        else
+            parfor mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,scoresTmp(:,mm)] = rankfeatures(Xtmp',Ytmp(:,mm),'Criterion',options.selAlgo);
+            end
+        end
+        scores(i,:) = mean(scoresTmp, 2);
+        if options.keepScores
+            allScores{i} = scoresTmp;
+        end
+        [~,id] = sort(scores(i,:),'descend');
         fsc(si(id(1:options.maxVars))) = fsc(si(id(1:options.maxVars)))+1;
     end
     
     % start ftest...
     if strcmpi(options.selAlgo,'ftest')
-        [id,scores{i}] = fsrftest(Xtmp,Ytmp);
+        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+        if ~options.parallel
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,scoresTmp(:,mm)] = fsrftest(Xtmp,Ytmp(:,mm));
+            end
+        else
+            parfor mm = 1:size(Ytmp,2)  % Loop over output variables
+                [~,scoresTmp(:,mm)] = fsrftest(Xtmp,Ytmp(:,mm));
+            end
+        end
+        scores(i,:) = mean(scoresTmp, 2);
+        if options.keepScores
+            allScores{i} = scoresTmp;
+        end
+        [~,id] = sort(scores(i,:),'descend');
         fsc(si(id(1:options.maxVars))) = fsc(si(id(1:options.maxVars)))+1;
     end
     
@@ -1225,19 +1428,29 @@ for i = 1:options.rep
     if strcmpi(options.selAlgo,'relieff')
         id = cell(length(options.rK),length(options.rE));
         for jj = 1:length(options.rK)
-            %disp(num2str(jj))
-            if ~options.parallel
+             if ~options.parallel
                 for kk = 1:length(options.rE)
-                    [id{jj,kk},scores{jj,kk}] = relieff(Xtmp,Ytmp,options.rK(jj),'sigma',options.rE(kk),'method','regression');
-                    %fsc(id(1:options.maxVars),jj,kk) =
-                    %fsc(id(1:options.maxVars),jj,kk)+1;
+                    scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+                    for mm = 1:size(Ytmp,2)  % Loop over output variables
+                        [~,scoresTmp(:,mm)] = relieff(Xtmp,Ytmp(:,mm),options.rK(jj),'sigma',options.rE(kk),'method',options.problem);
+                    end
+                    scores(i,jj,kk,:) = mean(scoresTmp, 2);
+                    if options.keepScores
+                        allScores{i,jj,kk} = scoresTmp;
+                    end
+                    [~,id{jj,kk}] = sort(squeeze(scores(i,jj,kk,:)),'descend');
                 end
             else
-                scores = cell(length(options.rK),length(options.rE));
-                parfor kk = 1:length(options.rE)
-                    [id{jj,kk},scores{jj,kk}] = relieff(Xtmp,Ytmp,options.rK(jj),'sigma',options.rE(kk),'method','regression');
-                    %fsc(id(1:options.maxVars),jj,kk) =
-                    %fsc(id(1:options.maxVars),jj,kk)+1;
+                for kk = 1:length(options.rE)
+                    scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+                    parfor mm = 1:size(Ytmp,2)  % Loop over output variables
+                        [~,scoresTmp(:,mm)] = relieff(Xtmp,Ytmp(:,mm),options.rK(jj),'sigma',options.rE(kk),'method',options.problem);
+                    end
+                    scores(i,jj,kk,:) = mean(scoresTmp, 2);
+                    if options.keepScores
+                        allScores{i,jj,kk} = scoresTmp;
+                    end
+                    [~,id{jj,kk}] = sort(squeeze(scores(i,jj,kk,:)),'descend');
                 end
             end
         end
@@ -1251,24 +1464,40 @@ for i = 1:options.rep
     % start nca...
     if strcmpi(options.selAlgo,'nca')
         lam = options.lam;
-        if ~options.parallel
-            for jj = 1:length(lam)
-                nca = fsrnca(Xtmp,Ytmp,'FitMethod','exact', ...
-                    'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
-                    'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',stnd);
-                [~,id{jj}] = sort(nca.FeatureWeights,'descend');
-                scores{jj} = nca.FeatureWeights;
+        for jj = 1:length(lam)
+            scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+            if ~options.parallel
+                for mm = 1:size(Ytmp,2)  % Loop over output variables
+                    if strcmpi(options.problem ,'regression')
+                        nca = fsrnca(Xtmp,Ytmp(:,mm),'FitMethod','exact', ...
+                            'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
+                            'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',options.stnd);
+                    elseif strcmpi(options.problem ,'classification')
+                        nca = fscnca(Xtmp,Ytmp(:,mm),'FitMethod','exact', ...
+                            'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
+                            'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',options.stnd);
+                    end
+                    scoresTmp(:, mm) = nca.FeatureWeights;
+                end
+            else
+                parfor mm = 1:size(Ytmp,2)  % Loop over output variables
+                    if strcmpi(options.problem ,'regression')
+                        nca = fsrnca(Xtmp,Ytmp(:,mm),'FitMethod','exact', ...
+                            'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
+                            'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',options.stnd);
+                    elseif strcmpi(options.problem ,'classification')
+                        nca = fscnca(Xtmp,Ytmp(:,mm),'FitMethod','exact', ...
+                            'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
+                            'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',options.stnd);
+                    end
+                    scoresTmp(:, mm) = nca.FeatureWeights;
+                end
             end
-        else
-            id = cell(length(lam));
-            scores = cell(length(lam));
-            parfor jj = 1:length(lam)
-                nca = fsrnca(Xtmp,Ytmp,'FitMethod','exact', ...
-                    'Solver','minibatch-lbfgs','Lambda',lam(jj), ...
-                    'GradientTolerance',1e-4,'IterationLimit',200,'Standardize',stnd);
-                [~,id{jj}] = sort(nca.FeatureWeights,'descend');
-                scores{jj} = nca.FeatureWeights;
+            scores(i,jj,:) = mean(scoresTmp, 2);
+            if options.keepScores
+                allScores{i,jj} = scoresTmp;
             end
+            [~,id{jj}] = sort(squeeze(scores(i,jj,:)),'descend');
         end
         if options.filter
             for jj = 1:length(lam)
@@ -1276,7 +1505,7 @@ for i = 1:options.rep
             end
         else
             for jj = 1:length(lam)
-                idtmp = find(scores{jj} > options.filterThresh);
+                idtmp = find(scores(i,jj,:) > options.filterThresh);
                 anm(jj,1) = length(idtmp);
                 fsc(si(idtmp)) = fsc(si(idtmp))+1;
             end
@@ -1288,12 +1517,19 @@ for i = 1:options.rep
     if strcmpi(options.selAlgo,'gpr')
         lam = options.lam;
         for jj = 1:size(lam,1)
-            mdl = fitrgp(Xtmp,Ytmp,'KernelFunction','ardsquaredexponential', ...
-                'Optimizer','lbfgs','FitMethod','sr','PredictMethod','fic','Standardize',stnd,'Regularization',lam(:,jj));
-            sl = mdl.KernelInformation.KernelParameters(1:end-1);
-            weights = exp(-sl); % Predictor weights
-            scores{jj} = weights/sum(weights); % Normalized predictor weights
-            [~,id{jj}] = sort(scores{jj},'descend');
+            scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+            for mm = 1:size(Ytmp,2)  % Loop over output variables
+                mdl = fitrgp(Xtmp,Ytmp(:,mm),'KernelFunction','ardsquaredexponential', ...
+                    'Optimizer','lbfgs','FitMethod','sr','PredictMethod','fic','Standardize',options.stnd,'Regularization',lam(:,jj),'Options',statset('UseParallel',options.parallel));
+                sl = mdl.KernelInformation.KernelParameters(1:end-1);
+                weights = exp(-sl); % Predictor weights
+                scoresTmp(:, mm) = weights/sum(weights); % Normalized predictor weights
+            end
+            if options.keepScores
+                allScores{i,jj} = scoresTmp;
+            end
+            scores(i,jj,:) = mean(scoresTmp, 2);
+            [~,id{jj}] = sort(scores(i,jj,:),'descend');
         end
         for jj = 1:size(lam,1)
             fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
@@ -1301,31 +1537,77 @@ for i = 1:options.rep
     end
     
     % start RF...
-    if strcmpi(options.selAlgo,'rf')
-        lam = options.lamRF;
-        for jj = 1:length(lam)
-            %             for kk = 1:length(options.mls)
-            %                 for ll = 1:length(options.mns)
-            %                     t =
-            %                     templateTree('NumVariablesToSample','all','MaxNumSplits',options.mns(ll),'MinLeafSize',options.mls(kk),...
-            %                         'PredictorSelection','interaction-curvature','Surrogate','on');
-            %                     mdl =
-            %                     fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-            %                     scores{jj,kk,ll} =
-            %                     oobPermutedPredictorImportance(mdl);
-            %                     [~,id{jj,kk,ll}] =
-            %                     sort(scores{jj,kk,ll},'descend');
-            %                     fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll)
-            %                     =
-            %                     fsc(oid(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll)+1;
-            %                 end
-            %             end
-            t = templateTree('NumVariablesToSample','all',...
-                'PredictorSelection','interaction-curvature','Surrogate','on','MaxNumSplits',3,'MinLeafSize',6);
-            mdl = fitrensemble(Xtmp,Ytmp,'Method','Bag','NumLearningCycles',lam(jj),'Learners',t);
-            scores{jj} = oobPermutedPredictorImportance(mdl);
-            [~,id{jj}] = sort(scores{jj},'descend');
-            fsc(si(id{jj}(1:options.maxVars))) = fsc(si(id{jj}(1:options.maxVars)))+1;
+    if strcmpi(options.selAlgo,'ens')
+        lam = options.lam;
+        if strcmpi(options.ensType,'bagged')
+            for jj = 1:length(lam)
+                for kk = 1:length(options.mls)
+                    for ll = 1:length(options.mns)
+                        t = templateTree('NumVariablesToSample','all','MaxNumSplits',options.mns(ll),'MinLeafSize',options.mls(kk),...
+                            'PredictorSelection','interaction-curvature','Surrogate','on','NumVariablesToSample','all');
+                        scoresTmp = zeros(size(Xtmp, 2), size(Ytmp, 2));  % Temporary scores matrix
+                        for mm = 1:size(Ytmp, 2)  % Loop over output variables
+                            if strcmpi(options.problem ,'regression')
+                                mdl = fitrensemble(Xtmp,Ytmp(:,mm),'Method','Bag','NumLearningCycles',lam(jj),'Learners',t,'Options',statset('UseParallel',options.parallel));
+                            elseif strcmpi(options.problem,'classification')
+                                mdl = fitcensemble(Xtmp,Ytmp(:,mm),'Method','Bag','NumLearningCycles',lam(jj),'Learners',t,'Options',statset('UseParallel',options.parallel));
+                            end
+                            scoresTmp(:, mm) = oobPermutedPredictorImportance(mdl,'Options',statset('UseParallel',options.parallel));
+                        end
+                        scores(i,jj,kk,ll,:) = mean(scoresTmp, 2);  % Average importance scores across output variables
+                        if options.keepScores
+                            allScores{i,jj,kk,ll} = scoresTmp;
+                        end
+                        [~,id{jj,kk,ll}] = sort(scores(i,jj,kk,ll,:),'descend');
+                        fsc(si(id{jj,kk,ll}(1:options.maxVars)),jj,kk,ll) = fsc(si(squeeze(id{jj,kk,ll}(1:options.maxVars))),jj,kk,ll)+1;
+                    end
+                end
+            end
+        else
+            error('boosting not supported at the moment')
+%             for jj = 1:length(lam)
+%                 for kk = 1:length(options.mls)
+%                     for ll = 1:length(options.mns)
+%                         for mm = 1:length(options.lr)
+%                             t = templateTree('NumVariablesToSample','all','MaxNumSplits',options.mns(ll),'MinLeafSize',options.mls(kk),...
+%                                 'PredictorSelection','interaction-curvature','Surrogate','on','NumVariablesToSample','all');
+%                             if strcmpi(options.problem ,'regression')
+%                                 mdl = fitrensemble(Xtmp,Ytmp,'Method','LSBoost','NumLearningCycles',lam(jj),'Learners',t,'LearnRate',options.lr(mm),'Options',statset('UseParallel',options.parallel));
+%                             elseif strcmpi(options.problem,'classification')
+%                                 mdl = fitcensemble(Xtmp,Ytmp,'Method',options.ensType,'NumLearningCycles',lam(jj),'Learners',t,'LearnRate',options.lr(mm),'Options',statset('UseParallel',options.parallel));
+%                             end
+%                             scores(i,jj,kk,ll,mm,:) = oobPermutedPredictorImportance(mdl,'Options',statset('UseParallel',options.parallel));
+%                             
+%                             [~,id{jj,kk,ll,mm}] = sort(scores(i,jj,kk,ll,mm,:),'descend');
+%                             fsc(si(id{jj,kk,ll,mm}(1:options.maxVars)),jj,kk,ll,mm) = fsc(si(squeeze(id{jj,kk,ll,mm}(1:options.maxVars))),jj,kk,ll,mm)+1;
+%                         end
+%                     end
+%                 end
+%             end
+        end
+    end
+    
+    % start PLS...
+    if strcmpi(options.selAlgo,'pls')
+        for jj = 1:length(options.nComp)
+            [XL,yl,XS,~,~,~,~,stats] = plsregress(Xtmp,Ytmp,options.nComp(jj),'Options',statset('UseParallel',options.parallel));
+            W0 = stats.W ./ sqrt(sum(stats.W.^2,1));
+            p = size(XL,1);
+            sumSq = sum(XS.^2,1).*sum(yl.^2,1);
+            scores(i,jj,:) = sqrt(p* sum(sumSq.*(W0.^2),2) ./ sum(sumSq,2));
+            if options.filter
+                [~,idtmp] = sort(squeeze(scores(i,jj,:)),'descend');
+                id = idtmp(1:options.maxVars);
+            else
+                id = find(squeeze(scores(i,jj,:)) > options.filterThresh);
+            end
+            fsc(si(id),jj) = fsc(si(id),jj)+1;
+            if ~options.filter
+                empMaxVars = mean([empMaxVars mean(length(id))],'omitnan');
+            end
+        end
+        if options.keepScores
+            allScores = scores;
         end
     end
 end
@@ -1361,8 +1643,6 @@ if isempty(options.thresh)
     end
     if ~isnan(options.numFalsePos)
         options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
-        %options.thresh =
-        %((((empMaxVars.^2)/options.numFalsePos)/size(X,2))+1)/2;
     else
         options.thresh = 1;
     end

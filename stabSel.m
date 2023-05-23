@@ -1,4 +1,4 @@
-function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos,alLScores] = stabSelNew(X,y,varargin)
+function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos,alLScores] = stabSel(X,y,varargin)
 %
 % Identify a stable set of features in your data using the framework of
 % stability selection.

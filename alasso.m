@@ -45,9 +45,9 @@ else
 end
 
 w = bin(:,id);
-% Exclude zero weights
-w(w == 0) = [];
-X(:, w == 0) = [];
+% % Exclude zero weights
+% X(:, w == 0) = [];
+% w(w == 0) = [];
 
 w = 1./abs(w).^(gam);
 id = find(w == inf);

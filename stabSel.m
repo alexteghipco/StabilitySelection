@@ -1,4 +1,4 @@
-function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos,alLScores] = stabSel(X,y,varargin)
+function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh,numFalsePos,allScores] = stabSel(X,y,varargin)
 %
 % Identify a stable set of features in your data using the framework of
 % stability selection.
@@ -598,6 +598,7 @@ options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],.
     'mlsmx',[],'mln',3,'mnsmn',[],'mnsmx',[],'mnsn',3,'keepScores',true,'ensType','bagged');
 
 optionNames = fieldnames(options);
+rng('default')
 rng shuffle
 
 % check if rf passed in but not lmn or lmx. Then, update defaults
@@ -699,10 +700,11 @@ end
 
 % fix pls options
 if strcmpi(options.selAlgo,'pls')
-    idx = find(options.nComp >= size(y,2));
+     %idx = find(options.nComp >= size(y,2));
+     idx = find(options.nComp >= round(size(X,1)*options.prop));
     if ~isempty(idx)
         options.nComp(idx) = [];
-        warning('Removing components larger than the number of tasks in your data')
+        warning('Removing components larger than the number of samples in your data')
     end
     if isempty(options.nComp)
         options.nComp = 1;

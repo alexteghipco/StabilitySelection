@@ -693,6 +693,13 @@ end
 
 % stack independent variables
 oys = size(y);
+idx = find(oys==1);
+
+% reshape y in case you did not read the readme
+if idx == 1
+    y = y';
+end
+
 if options.stack
    y = reshape(y,[size(y,1)*size(y,2),1]);
    X = repmat(X,oys(2),1);

@@ -908,7 +908,7 @@ if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(opti
             disp('Computing lambda values for EN (lambda values are computed from the whole dataset and the same series will be passed in to each subsample)')
         end
         for kk = 1:length(options.alpha)
-            for mm = 1:size(Ytmp,2)  % Loop over output variables
+            for mm = 1:size(y,2)  % Loop over output variables
                 [~,~,options.lam(:,kk,mm)] = defLam(X,y(:,mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
             end
         end
@@ -918,7 +918,7 @@ if (isempty(options.lam) && strcmpi(options.lamInside,'before')) && strcmpi(opti
         end
         [Xtmp,~,~,~] = alasso(X,y,[],[],[],options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
         for kk = 1:length(options.alpha)
-            for mm = 1:size(Ytmp,2)  % Loop over output variables
+            for mm = 1:size(y,2)  % Loop over output variables
                 [~,~,options.lam(:,kk,mm)] = defLam(Xtmp,y(:,mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
             end
         end
@@ -1092,7 +1092,7 @@ for j = 1:options.rep
                     end
                 end
                 for kk = 1:length(options.alpha)
-                    for mm = 1:size(Ytmp,2)  % Loop over output variables
+                    for mm = 1:size(y,2)  % Loop over output variables
                         [~,~,tmpl] = defLam(X(ctr{j},:),y(ctr{j},mm),options.alpha(kk),options.stnd,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
                         tmplmn(kk,j,mm) = min(tmpl);
                         tmplmx(kk,j,mm) = max(tmpl);
@@ -1100,12 +1100,12 @@ for j = 1:options.rep
                 end
             else
                 tmpid = setdiff([1:size(y,1)],ctr{j});
-                for mm = 1:size(Ytmp,2)  % Loop over output variables
+                for mm = 1:size(y,2)  % Loop over output variables
                     [Xtmp(:,:,mm),~,~,~] = alasso(X(ctr{j},:),y(ctr{j},mm),X(tmpid,:),y(tmpid,mm),1e-300,options.stnd,options.lamAEN,options.gam,options.ridgeRegSelect,options.parallel);
                 end
                 Xtmp = mean(Xtmp,3);
                 for kk = 1:length(options.alpha)
-                    for mm = 1:size(Ytmp,2)  % Loop over output variables
+                    for mm = 1:size(y,2)  % Loop over output variables
                         [~,~,tmpl] = defLam(Xtmp,y(ctr{j},mm),options.alpha(kk),false,options.lmx,options.lmn,options.lamRatio,options.lst,options.ln,options.logDirPref);
                         tmplmn(kk,j,mm) = min(tmpl);
                         tmplmx(kk,j,mm) = max(tmpl);
@@ -1126,7 +1126,7 @@ for j = 1:options.rep
 end
 if strcmpi(options.lamInside,'across') && strcmpi(options.selAlgo,'en') % this is because GPR lambdas will not vary across parameters but EN will
     for kk = 1:length(options.alpha)
-        for mm = 1:size(Ytmp,2)  % Loop over output variables
+        for mm = 1:size(y,2)  % Loop over output variables
             if options.lamOutlier
                 idx = find(tmplmx(kk,:) < prctile(tmplmx(kk,:),95)==1);
             else

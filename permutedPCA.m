@@ -25,6 +25,9 @@ function [pTvaf,pExp,tvafPerm,tvaf,vaf,vafs,vafp,vafpPerm,vafPerm,explainedPermA
 % For methods see: "STATISTICAL SIGNIFICANCE OF THE CONTRIBUTION OF
 % VARIABLES TO THE PCA SOLUTION: AN ALTERNATIVE PERMUTATION STRATEGY" by
 % LINTING et al (2011), published in psychometrika
+
+warning('permType must be whole model!!! variable-based permutation does not currently work.')
+
 rng('shuffle');
 verbose = false;
 parallel = true;

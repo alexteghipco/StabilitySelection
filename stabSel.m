@@ -250,7 +250,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'selAlgo' : sets the algorithm for selecting features. This may be 'EN'
 % for an elastic net (see lasso.m for more detail), 'lasso' for lasso
-% regression (see lasso.m for more detail), 'ridge for ridge regression
+% regression (see lasso.m for more detail), 'ridge' for ridge regression
 % (see lasso.m for more detail), 'corr' for correlation (see corr.m for
 % more detail), 'robustLR' for robust linear regression (not as sensitive
 % to outliers but takes MUCH longer to run; see fitlm.m for more detail),
@@ -595,7 +595,7 @@ options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],.
     'filter',false,'filterThresh',0.05,'samType','bootstrap','compPars',true,...
     'ridgeRegSelect','largest','lamOutlier',true,'fixMax',false,'nComp',[1:30],...
     'problem','regression','stack',false,'lrmn',0.001,'lrmx',1,'lrn',5,'mlsmn',[],...
-    'mlsmx',[],'mln',3,'mnsmn',[],'mnsmx',[],'mnsn',3,'keepScores',true,'ensType','bagged');
+    'mlsmx',[],'mln',3,'mnsmn',[],'mnsmx',[],'mnsn',3,'keepScores',true,'ensType','bagged','verboseFin',true);
 
 optionNames = fieldnames(options);
 rng('default')
@@ -737,11 +737,12 @@ if ~options.filter && ~isempty(idx)
     options.fixMax = false;
 end
 
-% fix missing maxVars when using a filter
-if isempty(options.maxVars) && options.filter
-    options.maxVars = size(X,2)/10;
-    warning(['You did not specify the number of variables to use in the filter. Using a tenth of your features...'])
-end
+% fix missing maxVars when using a filter -- deleted this for correlation.
+% Need to make sure others still work with this. 
+% if isempty(options.maxVars) && options.filter
+%     options.maxVars = size(X,2)/10;
+%     warning(['You did not specify the number of variables to use in the filter. Using a tenth of your features...'])
+% end
 
 % fix numFalsePos
 if isempty(options.numFalsePos) && isempty(options.fdr)
@@ -789,6 +790,12 @@ end
 if (isempty(options.numFalsePos) && isempty(options.fdr)) && (isempty(options.thresh) || isempty(options.maxVars))
     options.numFalsePos = 1;
     warning('You did not set thresholds for number of false positives or FDR. Typically this is not a problem, but you also did not set BOTH thresh and maxVars. Setting number of false positives to 1 so that it is possible to get these variables.')
+end
+
+% if you have provided all the variables *AND* the numFalsePos, then we
+% recompute your numFalsePos
+if ~isempty(options.thresh) && ~isempty(options.maxVars)
+    warning('You have input both the stable set threshold and the number of variables to sample. Your number of false positives is probably inaccurate!!! Interpret with caution.')
 end
 
 % get number of features (avg) our regularization parameters should produce
@@ -1088,7 +1095,7 @@ for j = 1:options.rep
             if ~options.adaptive
                 if options.verbose
                     if j == 1
-                        disp('Computing lambda values for EN (lambda values are computed separately for each subsample)')
+                        %disp('Computing lambda values for EN (lambda values are computed separately for each subsample)')
                     end
                 end
                 for kk = 1:length(options.alpha)
@@ -1113,7 +1120,7 @@ for j = 1:options.rep
                 end
                 if options.verbose
                     if j == 1
-                        disp(['Computing lambda values for adaptive EN (lambda values are computed separately for each subsample after weighting dataset by an EN and we define one series of lambda values based on min/max lambda across all subsamples)'])
+                        %disp(['Computing lambda values for adaptive EN (lambda values are computed separately for each subsample after weighting dataset by an EN and we define one series of lambda values based on min/max lambda across all subsamples)'])
                     end
                 end
             end
@@ -1163,7 +1170,7 @@ else
     fsc = zeros(size(X,2),1); % features
 end
 if options.verbose
-    disp(['Allocated matrix for counting feature selection across algorithm parameter. Size is: ' num2str(size(fsc))])
+    %disp(['Allocated matrix for counting feature selection across algorithm parameter. Size is: ' num2str(size(fsc))])
 end
 
 % And finally we can start selecting features within each subsample
@@ -1258,13 +1265,13 @@ for i = 1:options.rep
                 if ~isempty(lsFit.Lambda)
                     [~, adj] = min(abs(lam(:,kk,mm) - lsFit.Lambda(1))); adj = adj-1;
                     if options.verbose
-                        disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
+                       % disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
                     end
                 end
                 scoresTmp(:,mm,adj+1:end) = lsB;
                 
                 if options.verbose
-                    disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
+                    %disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])
                 end
             end
             scores(i,kk,:,:) = squeeze(mean(scoresTmp, 2));
@@ -1668,10 +1675,12 @@ end
 
 % show effective FDR-like p-value
 ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
-disp(['Effective FDR-like p-value is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
-disp(['Number of features that survived effective FDR-like p-value: ' num2str(length(fk))])
-disp(['Effective per-comparison error rate p-value is: ' num2str(options.numFalsePos/size(X,2))])
-disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos)])
+if options.verboseFin
+    disp(['Number of features in the stable set: ' num2str(length(fk))])
+    disp(['Effective per-comparison error rate p-value is: ' num2str(options.numFalsePos/2)])
+    disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos)])
+    disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
+end
 
 % output
 maxVars = options.maxVars;

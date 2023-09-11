@@ -20,6 +20,10 @@ function [fileNames,X,bid] = brainLoad(folder,mask)
 % X: each row is a voxel, each col is a file (i.e., subject)
 % bid: voxel identities from the whole brain image that we used as a mask
 % (short for brain IDs)
+%
+% Example calls:
+% [fileNames,X,bid] = brainLoad([],[])
+%[fileNames,X,bid] = brainLoad(['C:\Users\alext\toAnalyze'],['C:\Users\alext\Downloads\MNI152_2mm.nii.gz'])
 
 % permitted extensions
 exta = {'*.nii.gz','*.nii'};
@@ -44,7 +48,7 @@ end
 if isempty(mask)
     disp('Please select your brain mask nifti file. All nonzero values in the mask will be treated as areas of the brain you want to keep.')
     [mask1,mask2] = uigetfile(exta,'Please select your brain mask. All nonzero values in the mask will be treated as areas of the brain you want to keep.',pwd);
-    mask = [mask1 s mask2];
+    mask = [mask2 mask1];
 end
 
 % load in your mask

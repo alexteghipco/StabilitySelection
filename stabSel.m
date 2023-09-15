@@ -19,7 +19,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % What does stabSel do? ---------------------------------------------------
 % -------------------------------------------------------------------------
-% Use one of 20+ feature selection methods (see 'selAlgo'; default is an
+% Use one of 21 feature selection methods (see 'selAlgo'; default is an
 % elastic net) within the framework of stability selection to identify a
 % "stable" set of features (see output 'fk') in input matrix X. The stable
 % set of features contains those features that have a higher probability of
@@ -32,8 +32,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % contain multiple tasks (i.e., columns). By default, stabSel will average
 % stability values computed independently for each task. But you can also
 % stack your tasks. Or you can use some algorithms made specifically for
-% multi-task learning (e.g., PLS, a basic implementation of group lasso,
-% and BLANK).
+% multi-task learning (e.g., PLS).
 %
 % The two most critical parameters in stability selection are the q
 % variables that a feature selection method selects on average (see
@@ -41,13 +40,12 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % feature enters the stable set (see 'thresh'). Given these two parameters
 % (and assuming a default-set proportion of the data for resampling), we
 % can compute the upper bound on the number of false positives
-% ('numFalsePos') in the stable set (see citations for equation). This is
+% ('numFalsePos') in the stable set (see Tutorial1.mlx for equation). This is
 % effectively the per-family error rate, which is more stringent than FWER.
-% We can also get an FDR-like p-value by taking the proportion of the
-% stable set that would be the upper bound on the number of false
-% positives. If we know two of these three main variables (either number of
+% We can also get an FDR-like p-value (again, see Tutorial1.mlx for
+% explanation). If we know two of these three main variables (either number of
 % false positives or FDR, maxVars, or thresh), we can solve for the one
-% that remains. Typically, we set either the number of false positives or
+% that remains. Typically, we set the number of false positives or
 % FDR. It is easy to set 'thresh' prior to running stabSel, but it can be
 % tricky to set 'maxVars'. That's because the number of features selected
 % by some algorithms/learners is determined in an opaque way by a parameter
@@ -59,7 +57,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % method to select maxVars *or fewer* features. This means that although we
 % can control an FDR-like error rate by specifying maxVars or thresh, in
 % some cases, when we specify maxVars rather than then thresh, we will end
-% up with a lower effective FDR-like p-value (i.e., because the actual
+% up with a lower effective p-value (i.e., because the actual
 % average number of features selected by the selection method will be less
 % than maxVars).
 %
@@ -85,15 +83,14 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % A synthesized summary of main default options so you don't have to read
 % the documentation: by default, stabSel will use an elastic net to select
-% your features across 50 complementary bootstraps of your data (this
-% should be appropriate, see Shah & Samworth citaton). A series of
+% your features across 50 complementary bootstraps of your data. A series of
 % regularization parameters will be used in lieu of a fixed number of
 % selected variables. The series will be defined by the highest parameter
 % value that is estimated to select a single feature across all resampled
 % datasets.
 %
 % The average number of variables selected across parameters will then be
-% used to determine a  probability threshold for the stable set of features
+% used to determine a probability threshold for the stable set of features
 % that ensures fewer than 1 false positive. Outlier removal will not be
 % performed.
 %

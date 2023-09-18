@@ -1,6 +1,8 @@
 # StabilitySelection
 This is a package for performing stability selection in MATLAB, using a variety of feature selection/ranking algorithms that come packaged with MATLAB's statistics and machine learning toolbox. This comes with a variety of live code tutorials that show how to: 1) run stabSel, 2) properly set up cross-validation and nested cross-validation schemes, 3) build predictive models using other algorithms available in MATLAB's statistics and machine learning toolbox after performing stability selection. 
 
+For more info that may be useful to you, see our preprint. We showcase some results that use this toolbox. But mainly, we demonstrate that stability selection can be a powerful approach for feature selection under a variety of selection algorithms when sample sizes are relatively small (as they tend to be in clinical neuroimaging studies): https://www.medrxiv.org/content/10.1101/2023.09.13.23295370v1
+
 ## Why this kind of feature selection?
 Algorithms that cultivate feature sparsity demonstrably tradeoff stability. This is a problem because you can build a model that finds a sparse feature set for making relatively good predictions about the data, and yet the model would be difficult to interrogate and understand because feature contributions towards predictions may have a substantial amount of instability.
 

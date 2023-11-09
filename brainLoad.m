@@ -1,4 +1,4 @@
-function [fileNames,X,bid] = brainLoad(folder,mask)
+function [fileNames,X,bid,initSz] = brainLoad(folder,mask)
 % This function loads in all of the .nii or .nii.gz files within a folder,
 % constraining the portion of the images being extracted to a mask if
 % supplied. The way files are loaded is by first trying to use matlab's
@@ -20,10 +20,11 @@ function [fileNames,X,bid] = brainLoad(folder,mask)
 % X: each row is a voxel, each col is a file (i.e., subject)
 % bid: voxel identities from the whole brain image that we used as a mask
 % (short for brain IDs)
+% initSz: the initial size of the brain data before it is vectorized
 %
 % Example calls:
-% [fileNames,X,bid] = brainLoad([],[])
-%[fileNames,X,bid] = brainLoad(['C:\Users\alext\toAnalyze'],['C:\Users\alext\Downloads\MNI152_2mm.nii.gz'])
+% [fileNames,X,bid,initSz] = brainLoad([],[])
+%[fileNames,X,bid,initSz] = brainLoad(['C:\Users\alext\toAnalyze'],['C:\Users\alext\Downloads\MNI152_2mm.nii.gz'])
 
 % permitted extensions
 exta = {'*.nii.gz','*.nii'};
@@ -88,16 +89,19 @@ for i = 1:length(files)
     try
         disp('Trying to load using matlabs niftiread.m')
         tmp = niftiread([files(i).folder s files(i).name]);
+        initSz = size(tmp);
     catch
         try
             disp('Did not work! Trying to load using freesurfers load_nifti.m')
             tmp = load_nifti([files(i).folder s files(i).name]);
             tmp = tmp.vol;
+            initSz = size(tmp);
         catch
             try
                 disp('Did not work! Trying to load using spm load_nifti.m')
                 tmp1 = spm_vol([files(i).folder s files(i).name]);
                 tmp = spm_read_vols(tmp1);
+                initSz = size(tmp);
             catch
                 disp(['Could not load in file! ' files(i).folder s files(i).name])
                 error('Double check that nifti is unzipped if necessary based on the software you are trying to use')

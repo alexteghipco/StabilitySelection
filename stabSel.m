@@ -1658,7 +1658,12 @@ if isempty(options.thresh)
         disp(['Found a good number of false positives : ' num2str(options.numFalsePos)])
     end
     if ~isnan(options.numFalsePos)
-        options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+        if options.compPars && strcmpi(options.samType,'bootstrap')
+            %options.thresh = 1 - (options.numFalsePos / (2 * (options.rep/2) * empMaxVars));
+            options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+        else
+            options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
+        end
     else
         options.thresh = 1;
     end
@@ -1677,8 +1682,10 @@ end
 ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
 if options.verboseFin
     disp(['Number of features in the stable set: ' num2str(length(fk))])
-    disp(['Effective per-comparison error rate p-value is: ' num2str(options.numFalsePos/2)])
-    disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos)])
+    disp(['Per-comparison errors: ' num2str(options.numFalsePos/2)])
+    disp(['Per-family errors: ' num2str(options.numFalsePos)])
+    disp(['Effective per-comparison error rate p-value is: ' num2str((options.numFalsePos/2)./length(fk))])
+    disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos./length(fk))])
     disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
 end
 

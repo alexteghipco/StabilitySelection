@@ -5,7 +5,7 @@ For a better understanding of stabSel and how to use it, I recommend starting wi
 
 Tutorial2_PredictMOCA.mlx attempts to predict at-risk moca scorers from discourse measures. This tutorial showcases more basic classification techniques in stabSel. It also showcases how to build more complex predictive models after performing stability selection in a nested CV scheme (e.g., random forest, SVMs, etc). This example demonstrates settings in which stabSel massively boosts performance and settings where it does very little because the predictive model is already doing a good job of modeling signal features. This tutorial also contains code that may be helpful for tracking/visualizing hyperparameter selection across your nested CV scheme. 
 
-Tutorial3_PredictLSM.mlx is a work-in-progress. In this example we will use more complex classification for predicting aphasia severity from lesion location. However, for now, this tutorial exists to show you how to load in brain data for analysis with stabSel.
+Tutorial3_PredictLSM.mlx shows how to fold stability selection into a multivariate lesion symptom mapping model to predict aphasia severity from lesion location. Here, we benchmark this "stable multivariate lesion symptom mapping" model against standard multivariate lesion symptom mapping, as well as models that only rely on lesion size.
 
 Note: I am continuing to develop and add features to this package. If you encounter any issues, or if you have any suggestions, please let me know at: alex.teghipco@sc.edu. 
 

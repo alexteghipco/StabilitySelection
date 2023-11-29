@@ -1683,7 +1683,7 @@ ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
 if options.verboseFin
     disp(['Number of features in the stable set: ' num2str(length(fk))])
     disp(['Per-family error rate is: ' num2str(options.numFalsePos)])
-    disp(['Per-comparison error rate is: ' num2str([options.numFalsePos./empMaxVars])
+    disp(['Per-comparison error rate is: ' num2str(options.numFalsePos./size(X,2))])
     disp(['Stable false disovery ratio (proportion of errors to size of stable set) is: ' num2str(options.numFalsePos./length(fk))])
     %disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep)])
 end

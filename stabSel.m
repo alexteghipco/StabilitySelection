@@ -43,15 +43,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % can compute the upper bound on the number of false positives
 % ('numFalsePos') in the stable set (see citations for equation). This is
 % effectively the per-family error rate, which is more stringent than FWER.
-% We can also get an FDR-like p-value by taking the proportion of the
-% stable set that would be the upper bound on the number of false
-% positives. If we know two of these three main variables (either number of
-% false positives or FDR, maxVars, or thresh), we can solve for the one
-% that remains. Typically, we set either the number of false positives or
-% FDR. It is easy to set 'thresh' prior to running stabSel, but it can be
-% tricky to set 'maxVars'. That's because the number of features selected
-% by some algorithms/learners is determined in an opaque way by a parameter
-% that we have little insight into. The range we use for this parameter
+% We can also get an FDR-like p-value (see tutorial 1). If we know two of
+% these three main variables (either number of false positives or FDR-like
+% value, and maxVars, or thresh), we can solve for the one that remains
+% (note using the FDR-like p-value a heuristic is used to select a
+% numFalsePos). Conventionally, we set the number of false positives. It is
+% easy to set 'thresh' prior to running stabSel, but it can be tricky to
+% set 'maxVars'. That's because the number of features selected by some
+% algorithms/learners is determined in an opaque way by a parameter that we
+% have little insight into. The range we use for this parameter
 % will determine maxVars. However, stabSel still allows you to set a
 % specific 'maxVars' ahead of time in such cases. That's because for some
 % methods where this occurs, we can simply look at a model's weights and
@@ -69,13 +69,13 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % how many features to select), or will use a series of regularization
 % parameters indescriminantly (i.e., without forcing selection of maxVars
 % or fewer features) and then choose an appropriate 'thresh'. In both
-% cases, by default, stabSel will try to ensure < 1 false positive in the
+% cases, by default, stabSel will try to ensure <= 1 false positive in the
 % stable set.
 %
 % StabSel also supports outlier detection and removal (one of 4 methods)
 % either prior to, or during, the resampling procedure. By removing
-% outliers within the resampling procedure, a more generalizable method of
-% outlier removal is implemented.
+% outliers within the resampling procedure, it may be the case that you can
+% achieve better stability. 
 %
 % There are many options for you to tinker with in stabSel, but you you can
 % leave these out of your call and stabSel will use very reasonable
@@ -97,14 +97,13 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % that ensures fewer than 1 false positive. Outlier removal will not be
 % performed.
 %
-% Final note: Consider using an adaptive elastic net (not default because
-% it requires more manual intervention; see documentation). If you are
-% using stabSel to select features *for* a model, consider ensuring that
-% the data used for feature selection and model validation and/or tuning is
-% independent. This will give more accurate prformance estimates for the
-% model. Otherwise, in some projects it will not be unreasonable for
-% feature selection to be an analysis that is independent of model building
-% (e.g., when a more parsimonious model is irrelevant).
+% Final note: If you are using stabSel to select features *for* a model,
+% consider ensuring that the data used for feature selection and model
+% validation and/or tuning is independent. This will give more accurate
+% prformance estimates for the model. Otherwise, in some projects it will
+% not be unreasonable for feature selection to be an analysis that is
+% independent of model building (e.g., when a more parsimonious model is
+% irrelevant).
 %
 %% ------------------------------------------------------------------------
 % ----------------------------- Outputs -----------------------------------
@@ -220,7 +219,10 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'fdr' : FDR-like p-value threshold for stable set. You should provide
 % either this OR 'numFalsePos'. This will have no effect if both 'maxVars'
-% and 'thresh' are passed in. Default: [].
+% and 'thresh' are passed in. This is uncharted usage of stability
+% selection but may help you find a stable feature set that provides better
+% out of sample error so use at your own peril if you are not folding
+% stability selection in something like a nested CV scheme. Default: [].
 %
 % 'maxVars' : average # of variables the selection algorithm should choose
 % on each subsample. Consider passing this into stabSel as blank if your
@@ -492,6 +494,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %% ------------------------------------------------------------------------
 % ---------- Optional arguments for outlier detection/removal -------------
 % -------------------------------------------------------------------------
+% This portion of stability selection is currently experimental and will be
+% fleshed out...
+%
 % 'outlier' : determines where outlier detection removal will be performed
 % on matrix X. Set to 'outside' to perform outlier detection before
 % subsampling and 'inside' to perform outlier detection inside the
@@ -579,7 +584,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % Internal notes ----------------------------------------------------------
 % -------------------------------------------------------------------------
 %
-% Alex Teghipco // alex.teghipco@sc.edu // July 13, 2022
+% Alex Teghipco // alex.teghipco@sc.edu // Nov 29, 2023
 
 % load in defaults
 options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],...
@@ -834,7 +839,7 @@ if isempty(options.maxVars) && ~isempty(options.thresh)
             warning('It was not possible to find a number of false positives that would ensure selected fdr-like threshold. numFalsePos will be set to 1 to estimate maxVars.')
         end
     end
-    if ~isnan(options.numFalsePos)
+    if ~isnan(options.numFalsePos) % if no numFalsePos 
         n1 = sqrt(size(X,2)*(options.numFalsePos/(1/((2*options.thresh)-1))));
         if n1 > 1
             options.maxVars = round(n1);
@@ -842,7 +847,7 @@ if isempty(options.maxVars) && ~isempty(options.thresh)
             options.maxVars = round(n1+1)-1;
         end
     else
-        options.maxVars = round(sqrt(0.8*size(X,2)));
+        options.maxVars = round(sqrt(0.8*size(X,2))); % if 0.8 is first multiplied by an alpha value you can control PFER at a given alpha...but you must preselect a stability threshold. Here, we are not controling alpha
     end
     if options.maxVars == 0
         error('The specified threshold does not allow you to have a number of maxVars (average # of features selected) that can achieve less than the number of false positives you have indicated. Increase the number of false positives (or fdr-like thresh) you are comfortable with, or decrease the threshold.')
@@ -1658,7 +1663,7 @@ if isempty(options.thresh)
         disp(['Found a good number of false positives : ' num2str(options.numFalsePos)])
     end
     if ~isnan(options.numFalsePos)
-        if options.compPars && strcmpi(options.samType,'bootstrap')
+        if options.compPars && strcmpi(options.samType,'bootstrap') % this will be fixed, there should be a better approach for complementary bootstraps
             %options.thresh = 1 - (options.numFalsePos / (2 * (options.rep/2) * empMaxVars));
             options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
         else
@@ -1685,7 +1690,7 @@ if options.verboseFin
     disp(['Per-family error rate is: ' num2str(options.numFalsePos)])
     disp(['Per-comparison error rate is: ' num2str(options.numFalsePos./size(X,2))])
     disp(['Stable false disovery ratio (proportion of errors to size of stable set) is: ' num2str(options.numFalsePos./length(fk))])
-    %disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep)])
+    disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR OR PVALUE) is: ' num2str(ep)])
 end
 
 % output

@@ -54,24 +54,24 @@ end
 
 % load in your mask
 try
-    disp('Trying to load using matlabs niftiread.m')
+    %disp('Trying to load using matlabs niftiread.m')
     tmpM = niftiread(mask);
     bid = find(tmpM ~= 0);
 catch
     try
-        disp('Did not work! Trying to load using freesurfers load_nifti.m')
+        %disp('Did not work! Trying to load using freesurfers load_nifti.m')
         tmp = load_nifti(mask);
         tmpM = tmp.vol;
         bid = find(tmpM ~= 0);
     catch
         try
-            disp('Did not work! Trying to load using spm load_nifti.m')
+            %disp('Did not work! Trying to load using spm load_nifti.m')
             tmp1 = spm_vol(mask);
             tmpM = spm_read_vols(tmp1);
             bid = find(tmpM ~= 0);
         catch
             bid = [];
-            disp(['No loadable mask supplied Proceeding without the mask...'])
+            disp(['No loadable mask supplied Proceeding without the mask...if this is not expected behavior please make sure spm_read_vols or load_nifti or niftiread is in your path' ])
         end
     end
 end
@@ -87,18 +87,18 @@ for i = 1:length(files)
     disp(['Working on file ' num2str(i) ' of ' num2str(length(files))]);
     disp(['File is: ' files(i).name])
     try
-        disp('Trying to load using matlabs niftiread.m')
+        %disp('Trying to load using matlabs niftiread.m')
         tmp = niftiread([files(i).folder s files(i).name]);
         initSz = size(tmp);
     catch
         try
-            disp('Did not work! Trying to load using freesurfers load_nifti.m')
+            %disp('Did not work! Trying to load using freesurfers load_nifti.m')
             tmp = load_nifti([files(i).folder s files(i).name]);
             tmp = tmp.vol;
             initSz = size(tmp);
         catch
             try
-                disp('Did not work! Trying to load using spm load_nifti.m')
+                %disp('Did not work! Trying to load using spm load_nifti.m')
                 tmp1 = spm_vol([files(i).folder s files(i).name]);
                 tmp = spm_read_vols(tmp1);
                 initSz = size(tmp);

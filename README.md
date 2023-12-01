@@ -1,6 +1,11 @@
 # StabilitySelection
 This is package for performing stability selection in MATLAB, using a variety of feature selection/ranking algorithms that come packaged with MATLAB's machine learning toolbox. This comes with a variety of live code tutorials that show how to: 1) run stabSel, 2) properly set up cross-validation and nested cross-validation schemes, 3) build predictive models using other algorithms available in MATLAB's machine learning toolbox after performing stability selection.
 
+Stability selection can help you understand which features are reliably predictive and we have several tutorials below that show that it can also help you build more generalizable models. Here is a visual demonstration:
+<p align="center">
+  <kbd><img width="450" height="250" src="https://i.imgur.com/zRTwqEm.gif"/></kbd>
+</p>
+
 For a better understanding of stabSel and how to use it, I recommend starting with Tutorial1_PredictSongYear.mlx, where you will try predicting the year a song was produced using audio features. Example 1 is particularly important, the remaining examples are more supplemental and build on example 1. This tutorial showcases regression techniques in stabSel and provides an introduction for how you can properly setup nested CV schemes when using matlab's machine learning toolbox. 
 
 Tutorial2_PredictMOCA.mlx attempts to predict at-risk moca scorers from discourse measures. This tutorial showcases more basic classification techniques in stabSel. It also showcases how to build more complex predictive models after performing stability selection in a nested CV scheme (e.g., random forest, SVMs, etc). This example demonstrates settings in which stabSel massively boosts performance and settings where it does very little because the predictive model is already doing a good job of modeling signal features. This tutorial also contains code that may be helpful for tracking/visualizing hyperparameter selection across your nested CV scheme. 

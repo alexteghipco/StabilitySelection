@@ -32,8 +32,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % contain multiple tasks (i.e., columns). By default, stabSel will average
 % stability values computed independently for each task. But you can also
 % stack your tasks. Or you can use some algorithms made specifically for
-% multi-task learning (e.g., PLS, a basic implementation of group lasso,
-% and BLANK).
+% multi-task learning (e.g., PLS).
 %
 % The two most critical parameters in stability selection are the q
 % variables that a feature selection method selects on average (see
@@ -41,27 +40,27 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % feature enters the stable set (see 'thresh'). Given these two parameters
 % (and assuming a default-set proportion of the data for resampling), we
 % can compute the upper bound on the number of false positives
-% ('numFalsePos') in the stable set (see citations for equation). This is
+% ('numFalsePos') in the stable set. This is
 % effectively the per-family error rate, which is more stringent than FWER.
 % We can also get an FDR-like p-value by taking the proportion of the
 % stable set that would be the upper bound on the number of false
 % positives. If we know two of these three main variables (either number of
 % false positives or FDR, maxVars, or thresh), we can solve for the one
-% that remains. Typically, we set either the number of false positives or
-% FDR. It is easy to set 'thresh' prior to running stabSel, but it can be
-% tricky to set 'maxVars'. That's because the number of features selected
-% by some algorithms/learners is determined in an opaque way by a parameter
-% that we have little insight into. The range we use for this parameter
-% will determine maxVars. However, stabSel still allows you to set a
-% specific 'maxVars' ahead of time in such cases. That's because for some
-% methods where this occurs, we can simply look at a model's weights and
-% use those as a filter, while in other cases, we can force the selection
-% method to select maxVars *or fewer* features. This means that although we
-% can control an FDR-like error rate by specifying maxVars or thresh, in
-% some cases, when we specify maxVars rather than then thresh, we will end
-% up with a lower effective FDR-like p-value (i.e., because the actual
-% average number of features selected by the selection method will be less
-% than maxVars).
+% that remains. Typically, we preset the number of false positives and
+% the number of variables to select in each perturbed dataset or the threshold for what counts as a stable
+% feature. It is easy to set 'thresh' prior to running stabSel, but it can
+% be tricky to set 'maxVars'. That's because the number of features
+% selected by some algorithms/learners is determined in an opaque way by a
+% parameter that we have little insight into. The range we use for this
+% parameter will determine maxVars. However, stabSel still allows you to
+% set a specific 'maxVars' ahead of time in such cases. That's because for
+% some methods where this occurs, we can simply look at a model's weights
+% and use those as a filter, while in other cases, we can force the
+% selection method to select maxVars *or fewer* features. This means that
+% although we can control an error rate, in some cases, when we specify
+% maxVars rather than then thresh, we can end up with a lower error rate
+% (i.e., because the actual average number of features selected by the
+% selection method will be less than maxVars).
 %
 % If you do not set 'maxVars' or 'thresh', stabSel will either use a
 % heuristic to select the number of variables the selection method should
@@ -75,7 +74,8 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % StabSel also supports outlier detection and removal (one of 4 methods)
 % either prior to, or during, the resampling procedure. By removing
 % outliers within the resampling procedure, a more generalizable method of
-% outlier removal is implemented.
+% outlier removal is implemented. Note, this option has not been as
+% thoroughly debugged so you may encounter errors.
 %
 % There are many options for you to tinker with in stabSel, but you you can
 % leave these out of your call and stabSel will use very reasonable
@@ -83,10 +83,9 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % section, which also tells you what stabSel internally sets each option to
 % if you don't refer to it/change it in your call.
 %
-% A synthesized summary of main default options so you don't have to read
+% A synthesized summary of main default options if you don't want to read
 % the documentation: by default, stabSel will use an elastic net to select
-% your features across 50 complementary bootstraps of your data (this
-% should be appropriate, see Shah & Samworth citaton). A series of
+% your features across 300 random subsamples of your data. A series of
 % regularization parameters will be used in lieu of a fixed number of
 % selected variables. The series will be defined by the highest parameter
 % value that is estimated to select a single feature across all resampled
@@ -96,15 +95,6 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % used to determine a  probability threshold for the stable set of features
 % that ensures fewer than 1 false positive. Outlier removal will not be
 % performed.
-%
-% Final note: Consider using an adaptive elastic net (not default because
-% it requires more manual intervention; see documentation). If you are
-% using stabSel to select features *for* a model, consider ensuring that
-% the data used for feature selection and model validation and/or tuning is
-% independent. This will give more accurate prformance estimates for the
-% model. Otherwise, in some projects it will not be unreasonable for
-% feature selection to be an analysis that is independent of model building
-% (e.g., when a more parsimonious model is irrelevant).
 %
 %% ------------------------------------------------------------------------
 % ----------------------------- Outputs -----------------------------------
@@ -117,9 +107,6 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % fscmx : max empirical probability across regularization parameters for
 % each feature. Note, in stability selection we take the max proportion of
 % times that a feature was selected ACROSS all regularization parameters.
-% You can inspect this to get a different stable set using some other
-% probability threshold without re-running stabSel (but then ignore any
-% output about false positives, fdr or fwer)
 %
 % maxVars : # of variables/features specified to be selected in each
 % resampled dataset.
@@ -181,25 +168,20 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % (see section above). Set to 'bootstrap' to take bootstraps of your data.
 % It's possible bootstrapping injects more noise into the data, which is
 % beneficial to stability selection. But note, subsampling w/50% of your
-% data is close to the equivalent of bootstrapping. If bootstrapping,
-% consider getting complementary pairs (see next option). Default:
-% 'bootstrap'.
+% data is close to the equivalent of bootstrapping. Default: 'subsample'.
 %
 % 'compPars' : determines if subsampling or bootstrapping follows the
 % complementary pairs principle where each subsequent resample has no
-% overlap with the previous one. Note, this makes less sense to do with
-% subsampling and works best when 'prop' is ~0.5. Can be true or false.
-% Default: true.
+% overlap with the previous one. Note, this works best when 'prop' is ~0.5.
+% Can be true or false. Default: false.
 %
-% 'rep' : number of bootstraps/subsamples to draw. Increase this to 300+ if
-% 'compPars' is false. Default: 50.
+% 'rep' : number of bootstraps/subsamples to draw. Default: 300.
 %
 % 'prop' : proportion of data to resample (i.e., 0.7 means 70% of the data
 % will be used in each subsample or that a bootstrap will be of a size that
 % is 70% of the data; it makes sense to increase this number above default
-% if the dataset is very small but this may break FWER/FDR-like p/false
-% positive calculations). If 'prop' is 1 we use all of the data. Default:
-% 0.5.
+% if the dataset is very small but this can break PFER assumptions. If
+% 'prop' is 1 we use all of the data. Default: 0.5.
 %
 % 'propN' : if you would like to specify the number of samples to use in
 % each resample (rather than the proportion of the data), set 'prop' to be
@@ -214,13 +196,14 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 %
 % 'numFalsePos' : threshold for the upper bound on the number of false
 % positives you would like to ensure in the stable set. Corresponds to the
-% per family error rate. You should provide either this OR 'FDR'. This will
-% have no effect if both 'maxVars' and 'thresh' are passed in. This can be
-% a whole value, or a decimal.  Default: 1.
+% per family error rate. This will have no effect if both 'maxVars' and
+% 'thresh' are passed in, otherwise it will be used to find the appropriate
+% 'maxVars' or 'thresh'. It can be a whole value, or a decimal. Default: 1.
 %
 % 'fdr' : FDR-like p-value threshold for stable set. You should provide
 % either this OR 'numFalsePos'. This will have no effect if both 'maxVars'
-% and 'thresh' are passed in. Default: [].
+% and 'thresh' are passed in. Default: []. This option is currently
+% unavailable.
 %
 % 'maxVars' : average # of variables the selection algorithm should choose
 % on each subsample. Consider passing this into stabSel as blank if your
@@ -234,15 +217,15 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % in to enter the stable set. Consider passing this into stabSel as blank
 % if your selection algorithm has a regularization parameter that controls
 % the number of features selected. This way, a threshold will be computed
-% based on the fwer or number of false positives you have specified. If
-% 'thresh' is not empty, but 'maxVars' is, then stabSel will determine a
-% 'maxVars' that ensures FWER or number of false positives provided. If
-% threshold is > 1 we assume you are telling stabSel how many features to
-% select and fwer/false positives will no longer apply. Default: 0.9.
-% Default: [].
+% based on the PFER you have specified. If 'thresh' is not empty, but
+% 'maxVars' is, then stabSel will determine a 'maxVars' that ensures FWER
+% or number of false positives provided. If threshold is > 1 we assume you
+% are telling stabSel how many features to select and fwer/false positives
+% will no longer apply. Default: 0.9. Default: [].
 %
 % 'keepScores' : if set to true, stabSel will retain feature rankings
-% submitted to stability selection for all tasks in y (i.e., columns). 
+% submitted to stability selection for all tasks in y (i.e., columns).
+% Default: false
 %
 % 'problem' : specify whether your problem is a regression problem
 % ('regression') or classification ('classification). Some algorithms can
@@ -563,6 +546,11 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % ------ Optional arguments for corr and robust linear regression ---------
 % -------------------------------------------------------------------------
 %
+% SOME WARNINGS!
+% * If using complementary pairs and/or bootstrapping, we do not make any
+%   adjustments to how the expected number of false positives is
+%   calculated. 
+%
 %% ------------------------------------------------------------------------
 % Citations  --------------------------------------------------------------
 % -------------------------------------------------------------------------
@@ -584,7 +572,7 @@ function [fk,fsc,fscmx,maxVars,alpha,lam,scores,oid,ctr,mdl,ep,empMaxVars,thresh
 % load in defaults
 options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],...
     'lam',[],'lamInside','during','lamAEN',[],'lamRatio',1e-4,'adaptOutside',...
-    false,'lmn',[],'lmx',[],'ln',1000,'prop',0.5,'rep',50,'stnd',true,'numFalsePos',...
+    false,'lmn',[],'lmx',[],'ln',1000,'prop',0.5,'rep',300,'stnd',true,'numFalsePos',...
     [],'fdr',[],'thresh',0.9,'parallel',false,'adaptive',false,...
     'outlier','none','outlierPrepro','none','outlierPreproNonconsec',true,...
     'propOutliers',0.1,'outlierPreproP',0.05,'outlierPreproN',5000,...
@@ -592,7 +580,7 @@ options = struct('maxVars',[],'propN',false,'adjProp',true,'alpha',[0.1:0.1:1],.
     'outlierDir','row','outlierThresh',3,'selAlgo','en','lst','linear',...
     'gam',1,'lrp',0.05,'rK',[1:14 15:10:size(X,2)/2],'rE',[10:15:200],...
     'lr',[],'mls',[],'mns',[],'verbose',false,'logDirPref','smaller',...
-    'filter',false,'filterThresh',0.05,'samType','bootstrap','compPars',true,...
+    'filter',false,'filterThresh',0.05,'samType','subsample','compPars',false,...
     'ridgeRegSelect','largest','lamOutlier',true,'fixMax',false,'nComp',[1:30],...
     'problem','regression','stack',false,'lrmn',0.001,'lrmx',1,'lrn',5,'mlsmn',[],...
     'mlsmx',[],'mln',3,'mnsmn',[],'mnsmx',[],'mnsn',3,'keepScores',true,'ensType','bagged','verboseFin',true);
@@ -630,6 +618,11 @@ for pair = reshape(vleft,2,[]) %pair is {propName;propValue}
     end
 end
 
+% Throw arbitrary errors
+if ~isempty(options.fdr)
+    error('You cannot set the FDR option at the moment, please use numFalsePos instead...')
+end
+
 % check compatibility
 v = version('-release');
 if str2double(v(1:end-1)) < 2022 && strcmpi(options.selAlgo,'mrmr')
@@ -665,7 +658,7 @@ end
  end
  
  % warning about ensembles
- if strcmpi(options.selAlgo,'ens') && ~strcmpi(options.ensType,'bagged') && strcmpi(options.problem,'classification')
+ if strcmpi(options.selAlgo,'ens') & ~strcmpi(options.ensType,'bagged') & strcmpi(options.problem,'classification')
     idx = find(options.ensType,{'LogitBoost','GentleBoost','AdaBoostM1','AdaBoostM2','RUSBoost'});
     if isempty(idx)
         options.ensType = 'LogitBoost';
@@ -683,7 +676,7 @@ end
  end
  
 % check if classification is used w/incompatible method and vice versa
-if strcmpi(options.problem,'classification') && strcmpi(options.selAlgo,{'lasso','en','corr','robustLR','ftest','relieff','gpr','pls'})
+if strcmpi(options.problem,'classification') & strcmpi(options.selAlgo,{'lasso','en','corr','robustLR','ftest','relieff','gpr','pls'})
    error('You cannot use lasso en corr robustLR ftest relieff gpr or pls algorithm options with classification problems')
 end
  
@@ -1659,7 +1652,7 @@ if isempty(options.thresh)
     end
     if ~isnan(options.numFalsePos)
         if options.compPars && strcmpi(options.samType,'bootstrap')
-            %options.thresh = 1 - (options.numFalsePos / (2 * (options.rep/2) * empMaxVars));
+            %options.thresh = (((((empMaxVars/2).^2)/size(X,2))/options.numFalsePos)+1)/2;
             options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
         else
             options.thresh = ((((empMaxVars.^2)/size(X,2))/options.numFalsePos)+1)/2;
@@ -1671,6 +1664,14 @@ if isempty(options.thresh)
     disp(['Probability threshold for features to enter stable set was calculated to be: ' num2str(options.thresh)])
 end
 
+if options.compPars
+    disp('WARNING: Turning on complementary pairs means per family error rates may no longer be accurate')
+end
+
+if strcmpi(options.samType,'bootstrap')
+    disp('WARNING: Using bootstrapping means per family error rates may no longer be accurate')
+end
+
 if options.thresh > 1 && usrt % if threshold is not a proportion we assume you want a fixed set of selected features = threshold
     [~,fk] = maxk(fscmx,round(options.thresh));
     warning('Your threshold appears to be > 1 so we are assuming you want to select a fixed number of features as indicated by thresh. FDR-like p-value no longer applies!!')
@@ -1679,14 +1680,16 @@ else
 end
 
 % show effective FDR-like p-value
-ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
+%ep = ((1/((2*options.thresh)-1))*((empMaxVars.^2)/size(X,2)))/empMaxVars;
+ep = NaN;
 if options.verboseFin
     disp(['Number of features in the stable set: ' num2str(length(fk))])
-    disp(['Per-comparison errors: ' num2str(options.numFalsePos/2)])
+    %disp(['Per-comparison errors: ' num2str(options.numFalsePos/(empMaxVars*options.rep))])
+    disp(['Per-comparison errors: ' num2str(options.numFalsePos/empMaxVars)])
     disp(['Per-family errors: ' num2str(options.numFalsePos)])
-    disp(['Effective per-comparison error rate p-value is: ' num2str((options.numFalsePos/2)./length(fk))])
-    disp(['Effective per-family error rate p-value is: ' num2str(options.numFalsePos./length(fk))])
-    disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
+    %disp(['Effective per-comparison error rate p-value is: ' num2str((options.numFalsePos/2)./length(fk))])
+    disp(['Effective per-family error rate p-value or stable false discovery ratio is: ' num2str(options.numFalsePos./length(fk))])
+    %disp(['Effective FDR-like p-value (INTERPRET WITH CAUTION NOT ACTUAL FDR) is: ' num2str(ep) '. This may be slightly higher than your selected FDR-like p-value due to rounding. Discrepancy may be higher when maxVars is lower.'])
 end
 
 % output

@@ -7,13 +7,12 @@ Tutorial2_PredictMOCA.mlx attempts to predict at-risk moca scorers from discours
 
 Tutorial3_PredictLSM.mlx shows how to fold stability selection into a multivariate lesion symptom mapping model to predict aphasia severity from lesion location. Here, we benchmark this "stable multivariate lesion symptom mapping" model against standard multivariate lesion symptom mapping, as well as models that only rely on lesion size.
 
-Note: I am continuing to develop and add features to this package. If you encounter any issues, or if you have any suggestions, please let me know at: alex.teghipco@sc.edu. 
+If you encounter any issues, or if you have any suggestions, please reach out: alex.teghipco@sc.edu. 
 
 Here are some coming updates: 
 - The documentation for stabSel.m is sprawling. This will move into a wiki for this repository and the documentation within the main function will be trimmed down 
 - More options for multi-task learning
 - Support for testing interactions in the context of algorithms that do not automatically do this
-- Tutorials with brain data forthcoming
 
 Supported regression algorithms: 
 - lasso

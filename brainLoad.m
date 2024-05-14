@@ -24,7 +24,9 @@ function [fileNames,X,bid,initSz] = brainLoad(folder,mask)
 %
 % Example calls:
 % [fileNames,X,bid,initSz] = brainLoad([],[])
-%[fileNames,X,bid,initSz] = brainLoad(['C:\Users\alext\toAnalyze'],['C:\Users\alext\Downloads\MNI152_2mm.nii.gz'])
+% [fileNames,X,bid,initSz] = brainLoad(['C:\Users\alext\toAnalyze'],['C:\Users\alext\Downloads\MNI152_2mm.nii.gz'])
+%
+% % Alex Teghipco // alex.teghipco@sc.edu
 
 % permitted extensions
 exta = {'*.nii.gz','*.nii'};

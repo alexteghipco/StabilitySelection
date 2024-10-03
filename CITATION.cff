@@ -1,1 +1,23 @@
-Teghipco, A., Newman-Norlund, R., Gibson, M., Bonilha, L., Absher, J., Fridriksson, J., & Rorden, C. (2024). Stable multivariate lesion symptom mapping. Aperture Neuro, 4.
+cff-version: 1.2.0
+message: "Please cite the following work if you use this research in your own work."
+authors:
+  - family-names: Teghipco
+    given-names: A.
+  - family-names: Newman-Norlund
+    given-names: R.
+  - family-names: Gibson
+    given-names: M.
+  - family-names: Bonilha
+    given-names: L.
+  - family-names: Absher
+    given-names: J.
+  - family-names: Fridriksson
+    given-names: J.
+  - family-names: Rorden
+    given-names: C.
+title: "Stable multivariate lesion symptom mapping"
+version: "4"
+doi: "
+https://doi.org/10.52294/001c.117311" 
+journal: "Aperture Neuro"
+year: 2024

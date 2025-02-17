@@ -628,19 +628,19 @@ v = version('-release');
 if str2double(v(1:end-1)) < 2022 && strcmpi(options.selAlgo,'mrmr')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2022...please install a more recent version of matlab (2022+) to use mrmr for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),b)))  && strcmpi(options.selAlgo,'nca')
+if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),'b')))  && strcmpi(options.selAlgo,'nca')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2016b...please install a more recent version of matlab (2016b+) to use NCA for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2010 || (str2double(v(1:end-1)) == 2010 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'relieff')
+if (str2double(v(1:end-1)) < 2010 || (str2double(v(1:end-1)) == 2010 && ~strcmpi(v(end),'b'))) && strcmpi(options.selAlgo,'relieff')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2010b...please install a more recent version of matlab (2010b+) to use relieff for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2011 || (str2double(v(1:end-1)) == 2011 && ~strcmpi(v(end),b))) && (strcmpi(options.selAlgo,'en') || strcmpi(options.selAlgo,'lasso') || strcmpi(options.selAlgo,'ridge'))
+if (str2double(v(1:end-1)) < 2011 || (str2double(v(1:end-1)) == 2011 && ~strcmpi(v(end),'b'))) && (strcmpi(options.selAlgo,'en') || strcmpi(options.selAlgo,'lasso') || strcmpi(options.selAlgo,'ridge'))
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2011b...please install a more recent version of matlab (2011b+) to use elastic net, lasso, or ridge for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2015 || (str2double(v(1:end-1)) == 2015 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'gpr')
+if (str2double(v(1:end-1)) < 2015 || (str2double(v(1:end-1)) == 2015 && ~strcmpi(v(end),'b'))) && strcmpi(options.selAlgo,'gpr')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2015b...please install a more recent version of matlab (2015b+) to use GPR for feature selection'])
 end
-if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),b))) && strcmpi(options.selAlgo,'ens')
+if (str2double(v(1:end-1)) < 2016 || (str2double(v(1:end-1)) == 2016 && ~strcmpi(v(end),'b'))) && strcmpi(options.selAlgo,'ens')
     error(['Uh oh, it looks like your version of matlab (' v ') is from before 2016b...please install a more recent version of matlab (2016b+) to use ensembles for feature selection'])
 end
 if str2double(v(1:end-1)) < 2008 % cvpartition is faster than manual subsampling but requires 2008
@@ -1261,7 +1261,14 @@ for i = 1:options.rep
                        % disp(['Percentage of lambdas that did not fit current run: ' num2str(adj/options.ln)])
                     end
                 end
-                scoresTmp(:,mm,adj+1:end) = lsB;
+
+                %% Added for Sahin's data
+                if ~isempty(lsB)
+                    scoresTmp(:,mm,adj+1:end) = lsB;
+                else
+                    warning('Lasso returned empty coefficients for lambda values; assigning all zeros.');
+                    scoresTmp(:,mm,adj+1:end) = zeros(size(scoresTmp,1), size(lam,1) - (adj));
+                end
                 
                 if options.verbose
                     %disp(['Smallest lambdas DF is: ' num2str(lsFit.DF(1))])

@@ -7,9 +7,12 @@ function [fileNames,X,bid,initSz] = brainLoad(folder,mask)
 % try to load using SPM. Make sure one of these sets of files is in your
 % matlab path!
 %
+% Update--will load a single file if passing in a file instead of a folder.
+%
 % Inputs: 
 % folder : leave empty for UI folder selection, otherwise it is a string
-% path to your folder containing .nii or .nii.gz files
+% path to your folder containing .nii or .nii.gz files. This can now
+% include a single file.
 %
 % mask: same as above for folder. Note, if you pass this in as empty, you
 % will trigger the file selection UI. Just hit cancel if you do not intend
@@ -30,15 +33,13 @@ function [fileNames,X,bid,initSz] = brainLoad(folder,mask)
 
 % permitted extensions
 exta = {'*.nii.gz','*.nii'};
+fileNames = [];
+X = [];
+bid = [];
+initSz = [];
 
 % define file separator based on system
-if ispc
-    s = '\';
-elseif isunix || ismac
-    s = '/';
-else
-    error('Cannot identify your system...pc or mac or unix?')
-end
+s = filesep;
 
 % ask user where to pull nifti files from and mask
 if isempty(folder)
@@ -80,8 +81,14 @@ end
 
 % combine files of both kinds of extensions: nii or nii.gz
 files = [];
-for i = 1:length(exta)
-    files = [files; dir(fullfile([folder], [exta{i}]))];
+if isfolder(folder)
+    for i = 1:length(exta)
+        files = [files; dir(fullfile([folder], [exta{i}]))];
+    end
+else
+    [part1,part2,part3] = fileparts(folder);
+    files(1).folder = part1;
+    files(1).name = [part2 part3];
 end
 
 % now loop through and load

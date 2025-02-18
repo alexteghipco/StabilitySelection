@@ -1,4 +1,4 @@
-function [Xroi, unROI, id] = roiBin(X,roi,type)
+function [Xroi, unROI, id] = roiBin(X,roi)
 % Gets the mean of roi voxels as defined in unROI within the X matrix of
 % brain data.
 %
